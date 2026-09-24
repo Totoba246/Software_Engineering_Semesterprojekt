@@ -19,6 +19,8 @@ Die Geräte sind mit einer nachrüstbaren Telemetriebox (**TrafficNode**) ausges
 |🏢 **Betreiber (Unternehmen)**|Eigentümer und Hauptnutzer der überwachten Geräte|Geräteausfälle vermeiden, Batteriezustand zentral im Blick behalten|
 |🔧 **Servicetechniker/innen**|Personal, das mit dem Batteriewechsel beauftragt wird|Planungssicherheit: wissen, wann und wo ein Wechsel ansteht|
 
+###### *Wer wartet die Software, setzt den Server auf, etc.
+
 ### c. Personas
 
 #### 🏢 **Herr Weber (48, Betriebsleiter beim Gerätebetreiber)**
@@ -46,7 +48,9 @@ Die Geräte sind mit einer nachrüstbaren Telemetriebox (**TrafficNode**) ausges
 | F06 | **Login/Authentifizierung**           | Zugangsschutz für die Anwendung                                                                                                              | 🟢 Hoch    |
 | F07 | **Gerätestammdaten**                  | Anlegen/Pflegen von Metadaten je Gerät (Ort, Typ, Zuordnung zum Betreiber) – Voraussetzung für F05                                           | 🟠 Mittel  |
 | F08 | **Datenaufnahme ab MQTT**             | Entgegennahme, Validierung und Speicherung der auf dem MQTT-Broker veröffentlichten Messnachrichten (Strom, Spannung, GPS, Zeitstempel)      | 🟢 Hoch    |
+| F09 |**Servicetechniker Zuordnung**  | Mitabreiter ordnen Servicetechnikern Geräte zu., diese sehen nur die ihm zugeordneten Geräte | 🟡 Niedrig | 
 
+*Beim einrichten eines Geräts einmalig festlegen, welche Kategorie
 
 ---
 
@@ -62,7 +66,7 @@ Die Geräte sind mit einer nachrüstbaren Telemetriebox (**TrafficNode**) ausges
 | **Testbarkeit**   | Unit- und Integrationstests A06                     | Codequalität sicherstellen                        |
 | **Wartbarkeit**   | Saubere Code-Struktur, laufend gepflegte Dokumentation                            | Einfache Weiterentwicklung durch das Team         |
 
-
+###### *Genauer, mit Testbarkeit (Kurze Ladezeiten, < 50ms oder so)
 ---
 
 ## 🧭 4. Abgrenzung & MVP
