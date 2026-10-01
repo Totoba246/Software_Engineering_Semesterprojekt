@@ -40,14 +40,13 @@ Nutzer -- UC_Login
 Betreiber -- UC_Overview
 Betreiber -- UC_Filter
 Betreiber -- UC_Map
-Betreiber -- UC_Detail
 Betreiber -- UC_Prediction
 Betreiber -- UC_Alert
 Betreiber -- UC_Assign
 Betreiber -- UC_MasterData
 
+Servicetechniker -- UC_Overview
 Servicetechniker -- UC_Map
-Servicetechniker -- UC_Detail
 Servicetechniker -- UC_Prediction
 Servicetechniker -- UC_Alert
 
@@ -56,7 +55,13 @@ Admin -- UC_SysConfig
 
 MQTT -- UC_MQTTIngest
 
-UC_Detail ..> UC_History : <<include>>
+note right of UC_Overview
+  Servicetechniker sieht hier
+  nur seine zugeordneten Geräte
+end note
+
+UC_Overview ..> UC_Detail : <<include>>
 UC_Map ..> UC_Detail : <<include>>
+UC_Detail ..> UC_History : <<include>>
 
 @enduml
