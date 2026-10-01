@@ -1,0 +1,62 @@
+@startuml UseCaseDiagram_BatteryWatch
+' Use-Case-Diagramm BatteryWatch, abgeleitet aus den GitHub-Issues (User Stories #1-#10)
+' und den funktionalen Anforderungen F01-F11 aus der README.
+left to right direction
+skinparam packageStyle rect
+
+actor Nutzer
+actor Admin
+actor Firmenchef
+actor Mitarbeiter
+actor "Servicetechniker/in" as Servicetechniker
+actor "Betreiber-Nutzer" as Betreiber
+actor "TrafficNode /\nMQTT-Broker" as MQTT
+
+Admin --|> Nutzer
+Firmenchef --|> Nutzer
+Mitarbeiter --|> Nutzer
+Servicetechniker --|> Nutzer
+Firmenchef --|> Betreiber
+Mitarbeiter --|> Betreiber
+
+rectangle "BatteryWatch" {
+  usecase "Sich einloggen (F06)" as UC_Login
+  usecase "Geräteübersicht anzeigen (F01)" as UC_Overview
+  usecase "Geräte filtern/sortieren (F05)" as UC_Filter
+  usecase "Kartenansicht anzeigen (F10)" as UC_Map
+  usecase "Detailansicht eines Geräts anzeigen (F11)" as UC_Detail
+  usecase "Akkuverlauf einsehen (F03)" as UC_History
+  usecase "Wechselprognose einsehen (F04)" as UC_Prediction
+  usecase "Benachrichtigung bei kritischem\nAkkustand erhalten (F02)" as UC_Alert
+  usecase "Servicetechniker zuordnen (F09)" as UC_Assign
+  usecase "Gerätestammdaten pflegen (F07)" as UC_MasterData
+  usecase "Nutzerkonten verwalten" as UC_UserAdmin
+  usecase "Systemkonfiguration pflegen" as UC_SysConfig
+  usecase "Messdaten empfangen und speichern (F08)" as UC_MQTTIngest
+}
+
+Nutzer -- UC_Login
+
+Betreiber -- UC_Overview
+Betreiber -- UC_Filter
+Betreiber -- UC_Map
+Betreiber -- UC_Detail
+Betreiber -- UC_Prediction
+Betreiber -- UC_Alert
+Betreiber -- UC_Assign
+Betreiber -- UC_MasterData
+
+Servicetechniker -- UC_Map
+Servicetechniker -- UC_Detail
+Servicetechniker -- UC_Prediction
+Servicetechniker -- UC_Alert
+
+Admin -- UC_UserAdmin
+Admin -- UC_SysConfig
+
+MQTT -- UC_MQTTIngest
+
+UC_Detail ..> UC_History : <<include>>
+UC_Map ..> UC_Detail : <<include>>
+
+@enduml
