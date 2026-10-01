@@ -1,6 +1,6 @@
 @startuml UseCaseDiagram_BatteryWatch
-' Use-Case-Diagramm BatteryWatch, abgeleitet aus den GitHub-Issues (User Stories #1-#10)
-' und den funktionalen Anforderungen F01-F11 aus der README.
+' Use-Case-Diagramm BatteryWatch, abgeleitet aus den GitHub-Issues (User Stories #1-#12)
+' und den funktionalen Anforderungen F01-F13 aus der README.
 left to right direction
 skinparam packageStyle rect
 
@@ -33,6 +33,8 @@ rectangle "BatteryWatch" {
   usecase "Nutzerkonten verwalten" as UC_UserAdmin
   usecase "Systemkonfiguration pflegen" as UC_SysConfig
   usecase "Messdaten empfangen und speichern (F08)" as UC_MQTTIngest
+  usecase "Kalender-Ansicht voraussichtlicher\nAusfälle anzeigen (F12)" as UC_CalendarForecast
+  usecase "Eigene Wechseltermine in\nprivatem Kalender eintragen (F13)" as UC_PrivateCalendar
 }
 
 Nutzer -- UC_Login
@@ -44,11 +46,14 @@ Betreiber -- UC_Prediction
 Betreiber -- UC_Alert
 Betreiber -- UC_Assign
 Betreiber -- UC_MasterData
+Betreiber -- UC_CalendarForecast
 
 Servicetechniker -- UC_Overview
 Servicetechniker -- UC_Map
 Servicetechniker -- UC_Prediction
 Servicetechniker -- UC_Alert
+Servicetechniker -- UC_CalendarForecast
+Servicetechniker -- UC_PrivateCalendar
 
 Admin -- UC_UserAdmin
 Admin -- UC_SysConfig
@@ -63,5 +68,6 @@ end note
 UC_Overview ..> UC_Detail : <<include>>
 UC_Map ..> UC_Detail : <<include>>
 UC_Detail ..> UC_History : <<include>>
+UC_CalendarForecast ..> UC_Prediction : <<include>>
 
 @enduml

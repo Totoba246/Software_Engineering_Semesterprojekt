@@ -62,6 +62,8 @@ Beim Betreiber gibt es mehrere eigenständige Personen/Rollen mit eigenem Login:
 | F09 | **Servicetechniker Zuordnung**        | Firmenchef/Mitarbeiter ordnen Servicetechnikern Geräte zu, diese sehen nur die ihnen zugeordneten Geräte                                     | 🟡 Niedrig |
 | F10 | **Kartenansicht**                     | Darstellung aller TrafficNodes auf einer Karte; Klick auf einen Node führt zur Detailansicht                                                 | 🟡 Niedrig |
 | F11 | **Detailansicht**                     | Detailseite je Gerät mit Standort auf Karte, Koordinaten/Ort, aktuellem Akkustand und Akkuverlauf; zusätzlich für Firmenchef/Mitarbeiter der zugeordnete Servicetechniker | 🟠 Mittel  |
+| F12 | **Kalender-Ansicht voraussichtlicher Ausfälle** | Darstellung der voraussichtlichen Batterie-Ausfälle (auf Basis von F04) in einer Kalenderansicht; Firmenchef/Mitarbeiter sehen alle Geräte, Servicetechniker nur die ihnen zugeordneten | 🟡 Niedrig |
+| F13 | **Privater Kalender für Servicetechniker** | Servicetechniker können sich eigene Termine eintragen, wann sie welche Batterie wechseln wollen                                             | 🟡 Niedrig |
 
 *Beim einrichten eines Geräts einmalig festlegen, welche Kategorie
 
@@ -100,6 +102,8 @@ Das Projekt wird **inkrementell** entwickelt.
 - Geprüfte Statusregeln mit Vorwarnung bei kritischem Ladezustand (F02)
 - Kartenansicht (F10)
 - Detailansicht (F11)
+- Kalender-Ansicht voraussichtlicher Ausfälle (F12)
+- Privater Kalender für Servicetechniker (F13)
 
 ---
 
