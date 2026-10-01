@@ -1,0 +1,40 @@
+name: Update PlantUML diagrams
+
+on:
+  push:
+    paths:
+      - "docs/**/*.puml"
+
+permissions:
+  contents: write
+
+jobs:
+  plantuml:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java and Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-jre graphviz
+
+      - name: Download PlantUML
+        run: |
+          wget https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+
+      - name: Generate SVG diagrams
+        run: |
+          find docs -name "*.puml" -print0 | \
+          xargs -0 java -jar plantuml.jar -tsvg
+
+      - name: Commit updated diagrams
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add docs/**/*.svg
+          git diff --cached --quiet || git commit -m "Update PlantUML diagrams"
+          git push
