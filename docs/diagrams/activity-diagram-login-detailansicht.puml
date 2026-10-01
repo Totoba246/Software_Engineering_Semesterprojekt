@@ -1,0 +1,51 @@
+@startuml ActivityDiagram_Login_bis_Detailansicht
+' Aktivitätsdiagramm: Nutzer-Workflow von Login bis Detailansicht eines Geräts
+' Basierend auf F06 (Login), F01/F10 (Übersicht/Karte), F05 (Filter), F11 (Detailansicht), F03 (Akkuverlauf)
+title Login bis Detailansicht
+
+start
+
+:Zugangsdaten eingeben;
+
+if (Zugangsdaten korrekt?) then (ja)
+else (nein)
+  :Fehlermeldung anzeigen;
+  stop
+endif
+
+:Rolle des Nutzers ermitteln (F06);
+
+switch (Rolle?)
+case ( Admin )
+  :Nutzerverwaltung /\nSystemkonfiguration anzeigen;
+  stop
+case ( Firmenchef / Mitarbeiter )
+  :Geräteübersicht aller Geräte anzeigen (F01);
+case ( Servicetechniker/in )
+  :Geräteübersicht der\nzugeordneten Geräte anzeigen (F01);
+endswitch
+
+if (Kartenansicht gewünscht?) then (ja)
+  :Kartenansicht anzeigen (F10);
+else (nein)
+endif
+
+if (Filtern/Sortieren gewünscht?) then (ja)
+  :Geräte filtern/sortieren (F05);
+else (nein)
+endif
+
+:Gerät aus Übersicht/Karte auswählen;
+
+:Detailansicht öffnen (F11);
+:Standort, Koordinaten\nund aktuellen Akkustand anzeigen;
+:Akkuverlauf anzeigen (F03);
+
+if (Rolle = Firmenchef / Mitarbeiter?) then (ja)
+  :zugeordneten Servicetechniker anzeigen;
+else (nein)
+endif
+
+stop
+
+@enduml
