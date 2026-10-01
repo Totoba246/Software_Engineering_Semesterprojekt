@@ -21,9 +21,20 @@ Die Geräte sind mit einer nachrüstbaren Telemetriebox (**TrafficNode**) ausges
 
 ###### *Wer wartet die Software, setzt den Server auf, etc.
 
-### c. Personas
+### c. Nutzerrollen (Login-Rollen)
 
-#### 🏢 **Herr Weber (48, Betriebsleiter beim Gerätebetreiber)**
+Beim Betreiber gibt es mehrere eigenständige Personen/Rollen mit eigenem Login:
+
+|Rolle|Rechte|
+|---|---|
+|👑 **Admin**|Technische Verwaltung: Nutzerkonten anlegen/verwalten, Systemkonfiguration|
+|🏢 **Firmenchef**|Volle Geschäftssicht: alle Geräte & Batteriezustände, Servicetechniker zuordnen, Benachrichtigung bei kritischem Akkustand – gleiche Rechte wie Mitarbeiter|
+|🧑‍💼 **Mitarbeiter**|Volle Geschäftssicht: alle Geräte & Batteriezustände, Servicetechniker zuordnen, Benachrichtigung bei kritischem Akkustand – gleiche Rechte wie Firmenchef|
+|🔧 **Servicetechniker/in**|Sieht nur die ihm/ihr zugeordneten Geräte|
+
+### d. Personas
+
+#### 🏢 **Herr Weber (48, Betriebsleiter/Firmenchef beim Gerätebetreiber)**
 
 - Verantwortet den reibungslosen Einsatz der mobilen Geräte
 - Will auf einen Blick sehen, welche Geräte eine schwache Batterie haben
@@ -41,14 +52,16 @@ Die Geräte sind mit einer nachrüstbaren Telemetriebox (**TrafficNode**) ausges
 | ID  | Anforderung                           | Beschreibung                                                                                                                                 | Priorität  |
 | --- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | F01 | **Geräteübersicht**                   | Zentrale Liste/Ansicht aller überwachten Geräte mit aktuellem Batterieladezustand                                                            | 🟢 Hoch    |
-| F02 | **Statusregeln & Warnungen**          | Fachlich geprüfte Regeln stufen den Ladezustand ein (z. B. normal / niedrig / kritisch) und lösen bei kritischem Zustand eine Vorwarnung aus | 🟢 Hoch    |
+| F02 | **Statusregeln & Warnungen**          | Fachlich geprüfte Regeln stufen den Ladezustand ein (z. B. normal / niedrig / kritisch) und lösen bei kritischem Zustand eine Vorwarnung aus | 🟠 Mittel  |
 | F03 | **Verlaufsanzeige**                   | Darstellung, wie sich der Batteriezustand eines Geräts über die Zeit entwickelt hat                                                          | 🟠 Mittel  |
 | F04 | **Wechselprognose (Prediction)**      | Abschätzung, wann ein Batteriewechsel voraussichtlich nötig wird, auf Basis der Verlaufsdaten                                                | 🟡 Niedrig |
-| F05 | **Kategorisierung/Filter der Geräte** | Gruppierung bzw. Filterung der Geräte, z. B. nach Standort oder Gerätetyp                                                                    | 🟠 Mittel  |
-| F06 | **Login/Authentifizierung**           | Zugangsschutz für die Anwendung                                                                                                              | 🟢 Hoch    |
+| F05 | **Kategorisierung/Filter der Geräte** | Gruppierung, Filterung und Sortierung der Geräte, z. B. nach Standort, Gerätetyp oder Akkustand                                              | 🟠 Mittel  |
+| F06 | **Login/Authentifizierung**           | Zugangsschutz für die Anwendung mit den Rollen Admin, Firmenchef, Mitarbeiter und Servicetechniker (siehe 1.c)                               | 🟢 Hoch    |
 | F07 | **Gerätestammdaten**                  | Anlegen/Pflegen von Metadaten je Gerät (Ort, Typ, Zuordnung zum Betreiber) – Voraussetzung für F05                                           | 🟠 Mittel  |
 | F08 | **Datenaufnahme ab MQTT**             | Entgegennahme, Validierung und Speicherung der auf dem MQTT-Broker veröffentlichten Messnachrichten (Strom, Spannung, GPS, Zeitstempel)      | 🟢 Hoch    |
-| F09 |**Servicetechniker Zuordnung**  | Mitabreiter ordnen Servicetechnikern Geräte zu., diese sehen nur die ihm zugeordneten Geräte | 🟡 Niedrig | 
+| F09 | **Servicetechniker Zuordnung**        | Firmenchef/Mitarbeiter ordnen Servicetechnikern Geräte zu, diese sehen nur die ihnen zugeordneten Geräte                                     | 🟡 Niedrig |
+| F10 | **Kartenansicht**                     | Darstellung aller TrafficNodes auf einer Karte; Klick auf einen Node führt zur Detailansicht                                                 | 🟡 Niedrig |
+| F11 | **Detailansicht**                     | Detailseite je Gerät mit Standort auf Karte, Koordinaten/Ort, aktuellem Akkustand und Akkuverlauf; zusätzlich für Firmenchef/Mitarbeiter der zugeordnete Servicetechniker | 🟠 Mittel  |
 
 *Beim einrichten eines Geräts einmalig festlegen, welche Kategorie
 
@@ -85,6 +98,8 @@ Das Projekt wird **inkrementell** entwickelt.
 - Verlaufsanzeige über längere Zeiträume (F03)
 - Wechselprognose/Prediction (F04)
 - Geprüfte Statusregeln mit Vorwarnung bei kritischem Ladezustand (F02)
+- Kartenansicht (F10)
+- Detailansicht (F11)
 
 ---
 
