@@ -48,7 +48,7 @@ System_Ext(testpublisher, "Testpublisher", "Simulierte Messnachrichten (A05)")
 System_Boundary(bw, "BatteryWatch (Docker Compose, ADR-08)") {
     Container(frontend, "Web-Frontend", "React, SPA", "Geräteübersicht, Filter, Karte, Detailansicht, Verlauf, Kalender (ADR-07)")
     Container(backend, "Backend", "Python, modularer Monolith", "REST/JSON-API, Auth, Statusregeln, Geräteverwaltung (ADR-01, ADR-02)")
-    Container(ingestion, "Collectoin-Service", "Python", "Abonniert Telemetrie-Topics, validiert gegen MQTT-Vertrag, speichert Messwerte (ADR-10)")
+    Container(ingestion, "Collection-Service", "Python", "Abonniert Telemetrie-Topics, validiert gegen MQTT-Vertrag, speichert Messwerte (ADR-10)")
     Container(prediction, "Prediction-Service", "Python", "Berechnet Wechselprognosen aus Verlaufsdaten (ADR-03, Teil B – nicht im MVP)")
     ContainerQueue(broker, "MQTT-Broker", "Mosquitto", "Eigener Broker für Telemetrie-Topics (ADR-05)")
     ContainerDb(db, "Datenbank", "PostgreSQL", "Geräte, Nutzer, Rollen, Zuordnungen, Messwerte, Prognosen, Kalendertermine (ADR-04)")
