@@ -1,0 +1,112 @@
+' C4-Modell BatteryWatch (Ebenen 1-3: Kontext, Container, Komponenten)
+' Abgeleitet aus README (F01-F13, Rollen), docs/ADR.md (ADR-01 bis ADR-10)
+' und den vorhandenen UML-Diagrammen in docs/diagrams.
+' Jeder @startuml-Block erzeugt beim Build ein eigenes SVG.
+
+' =====================================================================
+' Ebene 1: Systemkontext
+' =====================================================================
+@startuml C4_Kontext_BatteryWatch
+!include <C4/C4_Context>
+
+title Systemkontext – BatteryWatch
+
+Person(admin, "Admin", "Verwaltet Nutzerkonten und Systemkonfiguration")
+Person(betreiber, "Firmenchef / Mitarbeiter", "Betreiber-Nutzer: überwacht alle Geräte, ordnet Servicetechniker zu, erhält Warnungen")
+Person(techniker, "Servicetechniker/in", "Sieht nur zugeordnete Geräte, plant Batteriewechsel")
+
+System(batterywatch, "BatteryWatch", "Überwacht den Batteriezustand mobiler Geräte zentral, zeigt Verlauf, Warnungen und Wechselprognosen")
+
+System_Ext(trafficnode, "TrafficNode", "Nachrüstbare Telemetriebox am Gerät; erfasst Strom, Spannung und GPS-Position (nicht Teil des Projekts)")
+System_Ext(testpublisher, "Testpublisher", "Simuliert TrafficNode-Nachrichten für Entwicklung und Tests (A05)")
+
+Rel(admin, batterywatch, "Verwaltet Nutzer und Konfiguration", "HTTPS")
+Rel(betreiber, batterywatch, "Überwacht Geräte, pflegt Stammdaten, ordnet Techniker zu", "HTTPS")
+Rel(techniker, batterywatch, "Sieht zugeordnete Geräte, Prognosen und Kalender", "HTTPS")
+
+Rel(trafficnode, batterywatch, "Veröffentlicht Messnachrichten", "MQTT")
+Rel(testpublisher, batterywatch, "Veröffentlicht Test-Messnachrichten", "MQTT")
+
+SHOW_LEGEND()
+@enduml
+
+' =====================================================================
+' Ebene 2: Container
+' =====================================================================
+@startuml C4_Container_BatteryWatch
+!include <C4/C4_Container>
+
+title Container – BatteryWatch
+
+Person(admin, "Admin", "Verwaltet Nutzerkonten und Systemkonfiguration")
+Person(betreiber, "Firmenchef / Mitarbeiter", "Betreiber-Nutzer")
+Person(techniker, "Servicetechniker/in", "Sieht nur zugeordnete Geräte")
+
+System_Ext(trafficnode, "TrafficNode", "Telemetriebox: Strom, Spannung, GPS")
+System_Ext(testpublisher, "Testpublisher", "Simulierte Messnachrichten (A05)")
+
+System_Boundary(bw, "BatteryWatch (Docker Compose, ADR-08)") {
+    Container(frontend, "Web-Frontend", "React, SPA", "Geräteübersicht, Filter, Karte, Detailansicht, Verlauf, Kalender (ADR-07)")
+    Container(backend, "Backend", "Python, modularer Monolith", "REST/JSON-API, Auth, Statusregeln, Geräteverwaltung (ADR-01, ADR-02)")
+    Container(ingestion, "Collectoin-Service", "Python", "Abonniert Telemetrie-Topics, validiert gegen MQTT-Vertrag, speichert Messwerte (ADR-10)")
+    Container(prediction, "Prediction-Service", "Python", "Berechnet Wechselprognosen aus Verlaufsdaten (ADR-03, Teil B – nicht im MVP)")
+    ContainerQueue(broker, "MQTT-Broker", "Mosquitto", "Eigener Broker für Telemetrie-Topics (ADR-05)")
+    ContainerDb(db, "Datenbank", "PostgreSQL", "Geräte, Nutzer, Rollen, Zuordnungen, Messwerte, Prognosen, Kalendertermine (ADR-04)")
+}
+
+Rel(admin, frontend, "Nutzt", "HTTPS")
+Rel(betreiber, frontend, "Nutzt", "HTTPS")
+Rel(techniker, frontend, "Nutzt", "HTTPS")
+
+Rel(frontend, backend, "Ruft API auf, Polling alle 5 min", "REST/JSON (ADR-06)")
+Rel(backend, prediction, "Fragt Prognosen ab", "REST/JSON")
+Rel(backend, db, "Liest/schreibt Stammdaten, liest Messwerte", "SQL")
+
+Rel(trafficnode, broker, "Veröffentlicht Messnachrichten", "MQTT")
+Rel(testpublisher, broker, "Veröffentlicht Test-Messnachrichten", "MQTT")
+Rel(ingestion, broker, "Abonniert Telemetrie-Topics", "MQTT")
+Rel(ingestion, db, "Schreibt validierte Messwerte", "SQL")
+Rel(prediction, db, "Liest Verlauf, schreibt Prognosen", "SQL")
+
+SHOW_LEGEND()
+@enduml
+
+' =====================================================================
+' Ebene 3: Komponenten des Backends (modularer Monolith)
+' =====================================================================
+@startuml C4_Komponenten_Backend
+!include <C4/C4_Component>
+
+title Komponenten – Backend (modularer Monolith)
+
+Container(frontend, "Web-Frontend", "React, SPA", "Bedienoberfläche")
+Container(prediction, "Prediction-Service", "Python", "Wechselprognose (Teil B)")
+ContainerDb(db, "Datenbank", "PostgreSQL", "Gemeinsame Datenbank (ADR-04)")
+
+Container_Boundary(backend, "Backend") {
+    Component(api, "API-Modul", "Python, REST-Endpunkte", "Stellt die REST/JSON-API bereit und delegiert an die Fachmodule")
+    Component(auth, "Auth-Modul", "Python, bcrypt/Argon2", "Login, Passwort-Hashing, Rollenprüfung je Endpunkt, Nutzerverwaltung (F06, ADR-09)")
+    Component(devices, "Geräteverwaltung", "Python", "Gerätestammdaten, Kategorien/Filter, Servicetechniker-Zuordnung, Messwertverlauf (F01, F03, F05, F07, F09)")
+    Component(rules, "Statusregeln", "Python", "Stuft Batteriezustand ein (normal/niedrig/kritisch) und erzeugt Warnungen (F02)")
+    Component(predclient, "Prognose-Client", "Python, HTTP-Client", "Ruft den Prediction-Service auf und liefert Wechselprognosen (F04)")
+    Component(calendar, "Kalender-Modul", "Python", "Kalender voraussichtlicher Ausfälle je Rolle (F12) und private Wechseltermine der Servicetechniker (F13)")
+}
+
+Rel(frontend, api, "Ruft auf", "REST/JSON")
+
+Rel(api, auth, "Prüft Login und Rechte")
+Rel(api, devices, "Geräte, Verlauf, Zuordnungen")
+Rel(api, rules, "Batteriestatus und Warnungen")
+Rel(api, predclient, "Prognosen")
+Rel(api, calendar, "Ausfallkalender, private Termine")
+Rel(calendar, predclient, "Holt voraussichtliche Ausfälle")
+Rel(calendar, devices, "Filtert auf zugeordnete Geräte")
+Rel(rules, devices, "Liest aktuelle Messwerte")
+
+Rel(auth, db, "Nutzer, Rollen", "SQL")
+Rel(devices, db, "Geräte, Zuordnungen, Messwerte", "SQL")
+Rel(calendar, db, "Private Wechseltermine", "SQL")
+Rel(predclient, prediction, "Fragt Prognosen ab", "REST/JSON")
+
+SHOW_LEGEND()
+@enduml
