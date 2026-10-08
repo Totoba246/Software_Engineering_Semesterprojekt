@@ -15,7 +15,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 | 07 | React als Frontend | ✅ akzeptiert |
 | 08 | Docker für Entwicklung und Bereitstellung | ✅ akzeptiert |
 | 09 | Login und Autorisierung in Eigenimplementierung | ✅ akzeptiert |
-| 10 | Ingestion-Service für die Datenaufnahme | ✅ akzeptiert |
+| 10 | Collection-Service für die Datenaufnahme | ✅ akzeptiert |
 
 ---
 
@@ -31,7 +31,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 ## ADR-02 · Python als Backend-Sprache
 
 - **Kontext:** Das Team hat die meiste Erfahrung mit Python. Die spätere ML-Erweiterung (Teil B) ist in Python ebenfalls am besten unterstützt.
-- **Entscheidung:** Monolith, Ingestion-Service und Prediction-Service werden in **Python** entwickelt. Das Web-Framework wird bei Projektstart festgelegt.
+- **Entscheidung:** Monolith, Collection-Service und Prediction-Service werden in **Python** entwickelt. Das Web-Framework wird bei Projektstart festgelegt.
 - **Konsequenzen:**
   - ➕ Schneller Einstieg, ein einheitlicher Stack für alle Backend-Teile
   - ➕ Reife Bibliotheken für MQTT, PostgreSQL und ML
@@ -48,7 +48,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 ## ADR-04 · Eine gemeinsame PostgreSQL-Datenbank
 
 - **Kontext:** Benötigt werden relationale Stammdaten (Geräte, Nutzer, Rollen, Zuordnungen) und zeitbasierte Messwerte (Verlauf, Prognose).
-- **Entscheidung:** Monolith, Ingestion-Service und Prediction-Service greifen auf **eine gemeinsame PostgreSQL**-Datenbank zu.
+- **Entscheidung:** Monolith, Collection-Service und Prediction-Service greifen auf **eine gemeinsame PostgreSQL**-Datenbank zu.
 - **Konsequenzen:**
   - ➕ Nur ein Datenbanksystem zu betreiben, sichern und wiederherzustellen
   - ➕ Zeitreihen sind für die erwartete Datenmenge mit Index auf `(device_id, timestamp)` ausreichend performant
@@ -57,7 +57,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 ## ADR-05 · Eigener MQTT-Broker für die Telemetrie
 
 - **Kontext:** Die TrafficNodes veröffentlichen ihre Messdaten per MQTT. Für Entwicklung, Tests und Betrieb wird ein kontrollierbarer Broker benötigt.
-- **Entscheidung:** Wir betreiben einen **eigenen MQTT-Broker** (z. B. Mosquitto) als Container. Abonniert werden die Telemetrie-Topics vom Ingestion-Service (ADR-10).
+- **Entscheidung:** Wir betreiben einen **eigenen MQTT-Broker** (z. B. Mosquitto) als Container. Abonniert werden die Telemetrie-Topics vom Collection-Service (ADR-10).
 - **Konsequenzen:**
   - ➕ Unabhängig von externer Infrastruktur, lokal und in Tests mit Testpublisher nutzbar
   - ➖ Broker muss selbst konfiguriert und abgesichert werden
@@ -82,7 +82,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 ## ADR-08 · Docker für Entwicklung und Bereitstellung
 
 - **Kontext:** Reproduzierbare Umgebung im Team sowie reproduzierbare Lieferung (A07–A09, B09) sind gefordert.
-- **Entscheidung:** Alle Komponenten (Backend, Ingestion-Service, Frontend, PostgreSQL, MQTT-Broker, später Prediction-Service) laufen als **Docker-Container**, orchestriert über **Docker Compose**.
+- **Entscheidung:** Alle Komponenten (Backend, Collection-Service, Frontend, PostgreSQL, MQTT-Broker, später Prediction-Service) laufen als **Docker-Container**, orchestriert über **Docker Compose**.
 - **Konsequenzen:**
   - ➕ Identische Umgebung lokal, in CI und im Deployment
 
@@ -95,10 +95,10 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
   - ➖ Sicherheitsverantwortung liegt beim Team → Auth gezielt testen (falsches Passwort, fremde Geräte, fehlende Rechte)
   - ⚠️ Session-Cookie vs. Token (JWT) wird bei der Umsetzung von F06 festgelegt
 
-## ADR-10 · Ingestion-Service für die Datenaufnahme
+## ADR-10 · Collection-Service für die Datenaufnahme
 
 - **Kontext:** Telemetrie muss dauerhaft vom MQTT-Broker empfangen und gespeichert werden (F08), unabhängig davon, ob gerade jemand die Web-Oberfläche nutzt. Eine MQTT-Dauerverbindung im selben Prozess wie die REST-API vermischt zwei unterschiedliche Aufgaben.
-- **Entscheidung:** Ein eigener **Ingestion-Service** (Python, eigener Container) abonniert die Telemetrie-Topics, validiert die Nachrichten gegen den MQTT-Vertrag und schreibt sie direkt in die gemeinsame Datenbank (ADR-04). Er stellt keine eigene API bereit.
+- **Entscheidung:** Ein eigener **Collection-Service** (Python, eigener Container) abonniert die Telemetrie-Topics, validiert die Nachrichten gegen den MQTT-Vertrag und schreibt sie direkt in die gemeinsame Datenbank (ADR-04). Er stellt keine eigene API bereit.
 - **Konsequenzen:**
   - ➕ Messwerte werden auch gespeichert, wenn das Web-Backend ausfällt oder neu deployt wird
   - ➕ Klar abgegrenzter, einzeln testbarer Datenpfad (passt zu A05: Testpublisher → Broker → Speicherung)
