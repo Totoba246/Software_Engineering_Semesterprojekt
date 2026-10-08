@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Akkumonitor – GUI-Entwurf</title>
+<title>BatteryWatch – GUI-Entwurf</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -49,6 +49,7 @@ a{color:var(--accent)}
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[hidden]{display:none !important}
 
 /* Status colors */
 .s-krit{--c:var(--red)} .s-niedrig{--c:var(--amber)} .s-ok{--c:var(--green)}
@@ -59,12 +60,16 @@ button{font:inherit;color:inherit}
 .lamp{display:inline-flex;flex-direction:column;gap:2px;padding:3px;background:var(--ink);border-radius:5px}
 .lamp i{display:block;width:7px;height:7px;border-radius:50%}
 .lamp i:nth-child(1){background:var(--red)} .lamp i:nth-child(2){background:var(--amber)} .lamp i:nth-child(3){background:var(--green)}
-nav{display:flex;gap:4px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
 nav a{padding:6px 12px;border-radius:6px;color:var(--muted);text-decoration:none;font-weight:600}
 nav a:hover{color:var(--ink)}
 nav a[aria-current="page"]{color:var(--ink);background:var(--bg)}
 .stamp{margin:0 0 0 auto;color:var(--muted);font-size:13px;display:flex;gap:14px;align-items:center}
 .proto{padding:2px 8px;border:1px dashed var(--line);border-radius:4px}
+.who{display:flex;align-items:center;gap:9px;color:var(--ink)}
+.who small{display:block;color:var(--muted);font-size:12px;line-height:1.2}
+.who b{display:block;font-size:13px;line-height:1.2}
+.av{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--bg);border:1px solid var(--line);font-size:12px;font-weight:800;color:var(--ink-soft);flex:none}
 
 main{flex:1;min-height:0;display:flex}
 .view{display:none;flex:1;min-width:0;min-height:0}
@@ -80,7 +85,7 @@ main{flex:1;min-height:0;display:flex}
 fieldset{border:0;margin:0;padding:0;min-width:0;display:grid;gap:6px}
 fieldset legend{padding:0;margin-bottom:6px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-input[type=search],select{width:100%;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}
+input[type=search],input[type=text],input[type=email],input[type=date],input[type=time],select{width:100%;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-width:0}
 input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%237b848a' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:11px 50%}
 .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-left:1px solid var(--line);background:none;padding:7px 6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -97,7 +102,7 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
 
 .list-head{display:flex;justify-content:space-between;padding:10px 18px 8px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
 .list-head strong{color:var(--ink)}
-.list{list-style:none;margin:0;padding:0 8px 16px;overflow:auto;flex:1;min-height:0}
+.list{list-style:none;margin:0;padding:0 8px 72px;overflow:auto;flex:1;min-height:0}
 .row{display:grid;grid-template-columns:92px 1fr auto;gap:12px;align-items:center;padding:10px;border-radius:8px;color:inherit;text-decoration:none}
 .row:hover,.row.hl{background:var(--hover)}
 .lvl{display:flex;align-items:center;gap:9px}
@@ -142,17 +147,19 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
 @keyframes pulse{0%{opacity:.5;transform:scale(1)}100%{opacity:0;transform:scale(2.8)}}
 @media (prefers-reduced-motion:reduce){.mk.s-krit .halo{animation:none;opacity:.3;transform:scale(1.7)}}
 
-/* Detail */
-#det{overflow:auto;display:none}
-#det.on{display:block}
-.detail{max-width:1080px;margin:0 auto;padding:22px 20px 56px}
+/* Seiten (Detail, Kalender, Admin) */
+#det,#cal,#adm{overflow:auto;display:none}
+#det.on,#cal.on,#adm.on{display:block}
+.detail{max-width:1080px;margin:0 auto;padding:22px 20px 80px}
+.page{max-width:1240px;margin:0 auto;padding:22px 20px 80px}
 .back{display:inline-flex;align-items:center;gap:6px;font-weight:600;text-decoration:none;font-size:14px}
 .back:hover{text-decoration:underline;text-underline-offset:3px}
 .d-head{margin:14px 0 20px}
+.page .d-head{margin-top:0}
 .d-head h1{margin:0;font-size:32px;line-height:1.1;font-weight:800;letter-spacing:-.025em}
 .d-head p{margin:6px 0 0;color:var(--muted)}
 .d-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:16px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;min-width:0}
 .span2{grid-column:1 / -1}
 .bigbatt{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
 .bignum{font-size:68px;line-height:.9;font-weight:800;letter-spacing:-.035em}
@@ -162,12 +169,17 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
 .bigbatt .batt-fill{border-radius:6px}
 .status{display:flex;align-items:center;gap:8px;margin:18px 0 0;font-weight:700}
 .status + p{margin:4px 0 0;color:var(--muted);font-size:14px}
-.facts{display:grid;grid-template-columns:auto 1fr;gap:9px 20px;margin:0;align-content:start}
+.plan{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line);font-size:14px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:9px 20px;margin:0;align-content:start;align-items:baseline}
 .facts dt{color:var(--muted);font-size:14px}
-.facts dd{margin:0;font-weight:600}
+.facts dd{margin:0;font-weight:600;min-width:0}
 .facts dd.stale{color:var(--red)}
+.facts select{width:auto;max-width:100%;padding:4px 8px;font-weight:600}
+.saved{margin-left:8px;font-size:13px;color:var(--green);font-weight:600}
+.warn{color:var(--red);font-weight:600}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.card-head h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
+.card-head h2,.card > h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
+.card > h2{margin-bottom:14px}
 .seg.small button{padding:6px 12px;flex:none}
 .chart{position:relative;width:100%;min-height:240px}
 .chart svg{display:block;overflow:visible}
@@ -184,6 +196,88 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
 .mini .map-svg{cursor:zoom-in}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px 7px;border-radius:7px;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:14px;text-decoration:none;border:0;cursor:pointer}
 .btn:hover{filter:brightness(1.08)}
+.btn-s{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:5px 10px 4px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn-s:hover{border-color:var(--ink-soft)}
+.btn-s.danger{color:var(--red)}
+.btn-s.danger-solid{background:var(--red);border-color:var(--red);color:#fff}
+.msg{padding:10px 14px 9px;border-radius:8px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--green);margin:0 0 16px;font-weight:600}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+.hint.warn{color:var(--red)}
+.form{display:grid;gap:12px}
+.form .btn{justify-self:start}
+
+/* Kalender */
+.cal-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.cal-side{display:grid;gap:16px}
+.cal-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.cal-head h2{margin:0 auto 0 0;font-size:22px;font-weight:800;letter-spacing:-.015em}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);border-radius:6px;overflow:hidden}
+.cal-dow{padding:6px 8px 5px;font-size:12px;font-weight:700;color:var(--muted);border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg)}
+.cal-day{min-height:104px;min-width:0;padding:6px;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;align-items:stretch}
+.cal-day:hover{background:var(--hover)}
+.cal-day.out{background:var(--bg)}
+.cal-day.out .num{color:var(--muted);font-weight:600}
+.cal-day.today .num{background:var(--accent);color:var(--on-accent);border-radius:999px;padding:1px 7px 0}
+.cal-day.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.num{font-size:13px;font-weight:700;align-self:flex-start}
+.ev{display:block;font-size:12px;line-height:1.35;padding:2px 6px 1px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--c) 15%,transparent);border-left:3px solid var(--c)}
+.appt{--c:var(--accent)}
+.ev-more{font-size:12px;color:var(--muted);padding-left:2px}
+.dots{display:none;gap:3px;flex-wrap:wrap}
+.cal-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;font-size:13px;color:var(--muted)}
+.cal-legend span{display:inline-flex;align-items:center;gap:6px}
+.agenda{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.ag{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.ag:first-child{border-top:0;padding-top:0}
+.ag .dot{margin-top:5px}
+.ag > div{display:grid;gap:2px;min-width:0}
+.ag a{font-weight:700;text-decoration:none}
+.ag a:hover{text-decoration:underline}
+.ag .meta{white-space:normal}
+.ag .reset{margin-top:4px}
+.soon{list-style:none;margin:0;padding:0}
+.soon button{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;border:0;background:none;padding:8px 6px;border-radius:7px;text-align:left;cursor:pointer}
+.soon button:hover{background:var(--hover)}
+.soon .when{font-size:13px;color:var(--muted);white-space:nowrap}
+
+/* Admin */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.stat b{display:block;font-size:30px;line-height:1.1;font-weight:800;letter-spacing:-.02em}
+.stat span{font-size:13px;color:var(--muted)}
+.adm-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+.tbl-filters{display:flex;gap:8px;flex-wrap:wrap}
+.tbl-filters input{width:220px}
+.tbl-filters select{width:auto}
+.users{width:100%;border-collapse:collapse}
+.users th{text-align:left;font-size:13px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+.users td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.users tr:last-child td{border-bottom:0}
+.users tr.locked .u b{color:var(--muted)}
+.u{display:flex;align-items:center;gap:10px;min-width:0}
+.u > div{display:grid;min-width:0}
+.you{font-size:11px;font-weight:700;color:var(--accent);margin-left:4px}
+.role{display:inline-block;padding:2px 9px 1px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--line);background:var(--bg);white-space:nowrap}
+.role.r-admin{border-color:var(--ink);background:var(--ink);color:var(--surface)}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap}
+.act{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.act .q{font-size:13px;font-weight:600;color:var(--red)}
+.muted{color:var(--muted)}
+
+/* Ansicht-Umschalter (Testmodus) */
+.rs{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60}
+body.fs-open .rs{display:none}
+.rs-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px 7px;border-radius:999px;border:1px dashed var(--ink-soft);background:var(--surface);box-shadow:var(--float-shadow);font-weight:700;font-size:13px;cursor:pointer}
+.rs-btn small{font-weight:400;color:var(--muted)}
+.rs-menu{position:absolute;left:0;bottom:calc(100% + 8px);width:290px;max-height:min(70vh,520px);overflow:auto;padding:8px}
+.rs-menu p{margin:6px 8px 4px;font-size:12px;color:var(--muted)}
+.rs-menu h3{margin:10px 8px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.rs-menu button{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;padding:7px 8px;border-radius:7px;text-align:left;cursor:pointer;font-size:14px}
+.rs-menu button:hover:not(:disabled){background:var(--hover)}
+.rs-menu button:disabled{cursor:not-allowed;opacity:.55}
+.rs-menu button[aria-checked="true"]{background:var(--bg);font-weight:700}
+.rs-menu button .av{width:26px;height:26px;font-size:11px}
+.rs-menu button em{margin-left:auto;font-style:normal;font-size:12px;color:var(--muted)}
 
 /* Fullscreen map */
 #fs{position:fixed;inset:0;z-index:40;display:none;background:var(--land);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -211,6 +305,10 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
 .fs-legend{left:auto;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px))}
 
 /* Responsive */
+@media (max-width:1060px){
+  .cal-wrap{grid-template-columns:1fr}
+  .adm-grid{grid-template-columns:1fr}
+}
 @media (max-width:860px){
   .top{gap:12px 18px}
   .stamp{display:none}
@@ -221,6 +319,17 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
   .list{overflow:visible}
   .d-grid{grid-template-columns:1fr}
   .bignum{font-size:56px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tbl-filters,.tbl-filters input{width:100%}
+  .tbl-filters input{flex:1}
+  .users thead{display:none}
+  .users tr{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .users tr:last-child{border-bottom:0}
+  .users td{padding:0;border:0}
+  .users td:nth-child(1){grid-column:1 / -1}
+  .users td:nth-child(4){display:none}
+  .users td:nth-child(5){grid-column:1 / -1}
+  .act{justify-content:flex-start}
   .fs-panel{left:12px;right:12px;width:auto;top:calc(12px + env(safe-area-inset-top,0px))}
   .fs-panel.collapsed .filters{display:none}
   .fs-panel.collapsed .fs-panel-head{padding-bottom:14px}
@@ -231,20 +340,26 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
   #fs.has-info .fs-zoom{display:none}
   .fs-legend{display:none}
 }
+@media (max-width:640px){
+  .card{padding:16px}
+  .cal-day{min-height:58px;padding:4px}
+  .cal-dow{padding:6px 4px 5px}
+  .ev,.ev-more{display:none}
+  .dots{display:flex}
+  .dots .dot{width:7px;height:7px}
+}
 @media (max-width:420px){
   .row{grid-template-columns:78px 1fr}
   .seen{display:none}
+  .two{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="#/"><span class="lamp" aria-hidden="true"><i></i><i></i><i></i></span>Akkumonitor</a>
-  <nav aria-label="Hauptnavigation">
-    <a href="#/" data-nav="ov">Übersicht</a>
-    <a href="#/karte" data-nav="fs">Karte</a>
-  </nav>
-  <p class="stamp"><span id="stamp"></span><span class="proto">Entwurf mit Beispieldaten</span></p>
+  <a class="brand" href="#/"><span class="lamp" aria-hidden="true"><i></i><i></i><i></i></span>BatteryWatch</a>
+  <nav aria-label="Hauptnavigation" id="nav"></nav>
+  <div class="stamp"><span id="stamp"></span><span class="proto">Entwurf mit Beispieldaten</span><span class="who" id="who"></span></div>
 </header>
 
 <main>
@@ -271,6 +386,14 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
   <section id="det" class="view" aria-label="Gerätedetails">
     <div class="detail" id="det-body"></div>
   </section>
+
+  <section id="cal" class="view" aria-label="Kalender">
+    <div class="page" id="cal-body"></div>
+  </section>
+
+  <section id="adm" class="view" aria-label="Nutzerverwaltung">
+    <div class="page" id="adm-body"></div>
+  </section>
 </main>
 
 <div id="fs" role="dialog" aria-modal="true" aria-label="Karte im Vollbild">
@@ -296,10 +419,19 @@ input[type=search]{padding-left:34px;background-image:url("data:image/svg+xml,%3
   </div>
 </div>
 
+<!-- Testmodus: ersetzt vorerst den Login (F06) -->
+<div class="rs" id="rs">
+  <div class="rs-menu float" id="rs-menu" role="menu" aria-label="Ansicht wechseln" hidden></div>
+  <button class="rs-btn" id="rs-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="rs-menu">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h10l-3-3M14 11H4l3 3"/></svg>
+    <span><small>Ansicht:</small> <span id="rs-cur"></span></span>
+  </button>
+</div>
+
 <script>
 /* ---------- Beispieldaten ---------- */
 function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-const HOUR=3600e3;
+const HOUR=3600e3,DAY=24*HOUR;
 const NOW=Math.floor(Date.now()/HOUR)*HOUR + Math.floor((Date.now()%HOUR)/60000)*60000;
 const LON0=8.97,LON1=9.36,LAT0=48.66,LAT1=48.92;
 function proj(lon,lat){return[(lon-LON0)/(LON1-LON0)*1000,(LAT1-lat)/(LAT1-LAT0)*1000]}
@@ -353,6 +485,8 @@ const DEV=(()=>{
     out.push({
       id:'TN-'+(1040+i*3), name:`${cat.id}-${nr} ${street}`, cat, site:site.name, street,
       lat, lon, x, y, pct, status, hist, seenMin, perHour, lastSwap,
+      // Wechselprognose (F04, vereinfacht): linear mit dem Verbrauch der letzten 24 Std. bis 0 %
+      failAt:pct<=0?NOW:NOW+pct/perHour*HOUR,
       volt:11.7+pct/100*1.05, amp:0.6+rate*4.2
     });
   }
@@ -362,19 +496,57 @@ const BY_ID=Object.fromEntries(DEV.map(d=>[d.id,d]));
 const STATUS={krit:'Kritisch',niedrig:'Niedrig',ok:'Gut'};
 const STATUS_TEXT={krit:'Akku unter 20 %, Wechsel planen',niedrig:'Akku zwischen 20 und 49 %',ok:'Akku ab 50 %'};
 
+/* ---------- Nutzer, Rollen, Zuordnung, Termine ---------- */
+const ROLES={admin:'Admin',chef:'Firmenchef',mitarbeiter:'Mitarbeiter',tech:'Servicetechniker'};
+const USERS=[
+  {id:'u1',name:'Max Hoffmann',email:'m.hoffmann@betreiber.de',role:'admin',locked:false,last:NOW-2*HOUR},
+  {id:'u2',name:'Thomas Weber',email:'t.weber@betreiber.de',role:'chef',locked:false,last:NOW-20*60e3},
+  {id:'u3',name:'Sarah Klein',email:'s.klein@betreiber.de',role:'mitarbeiter',locked:false,last:NOW-26*HOUR},
+  {id:'u4',name:'Daniel Wolf',email:'d.wolf@betreiber.de',role:'mitarbeiter',locked:false,last:NOW-5*DAY},
+  {id:'u5',name:'Elif Aydin',email:'e.aydin@betreiber.de',role:'tech',locked:false,last:NOW-3*HOUR},
+  {id:'u6',name:'Jonas Brandt',email:'j.brandt@betreiber.de',role:'tech',locked:false,last:NOW-30*HOUR},
+  {id:'u7',name:'Lena Schuster',email:'l.schuster@betreiber.de',role:'tech',locked:false,last:NOW-50*HOUR},
+  {id:'u8',name:'Markus Vogel',email:'m.vogel@betreiber.de',role:'tech',locked:true,last:NOW-41*DAY}
+];
+let nextUid=9;
+const USER=id=>USERS.find(u=>u.id===id);
+const SITE_TECH={'Stuttgart-Mitte':'u5','Bad Cannstatt':'u5','Fellbach':'u5','Stuttgart-Vaihingen':'u6','Böblingen':'u6','Leonberg':'u6','Esslingen':'u7','Ludwigsburg':'u7'};
+DEV.forEach((d,i)=>{d.tech=i%7===6?null:SITE_TECH[d.site]});
+
+// Private Termine der Servicetechniker (F13)
+let APPTS=[],nextAid=1;
+DEV.filter(d=>d.tech==='u5').sort((a,b)=>a.failAt-b.failAt).slice(0,2).forEach((d,i)=>{
+  APPTS.push({id:nextAid++,tech:'u5',dev:d.id,date:dkey(suggestAt(d)),time:i?'13:30':'08:30',note:i?'':'Ersatzakku aus dem Lager mitnehmen'});
+});
+
+let me=USER('u2');
+
 /* ---------- Hilfsfunktionen ---------- */
 const NS='http://www.w3.org/2000/svg';
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const de=(n,d=1)=>n.toFixed(d).replace('.',',');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function ago(min){if(min<60)return`vor ${min} Min.`;const h=Math.floor(min/60);return`vor ${h} Std.`}
+function ago(min){if(min<60)return`vor ${min} Min.`;const h=Math.floor(min/60);if(h<24)return`vor ${h} Std.`;const d=Math.floor(h/24);return d===1?'vor 1 Tag':`vor ${d} Tagen`}
 function dur(h){h=Math.round(h);if(h<24)return`ca. ${h} Std.`;const d=Math.floor(h/24),r=h%24;return`ca. ${d} ${d===1?'Tag':'Tage'}${r?` ${r} Std.`:''}`}
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
-const p2=n=>String(n).padStart(2,'0');
+const WDL=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+const MONTHS=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+function p2(n){return String(n).padStart(2,"0")}
 const fmtTime=t=>{const d=new Date(t);return`${p2(d.getHours())}:${p2(d.getMinutes())}`};
 const fmtDay=t=>{const d=new Date(t);return`${WD[d.getDay()]} ${d.getDate()}.${p2(d.getMonth()+1)}.`};
+function dkey(t){const d=new Date(t);return`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`}
+function parseKey(k){const[y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d)}
+const fmtKey=k=>fmtDay(parseKey(k).getTime());
+const initials=n=>n.split(/\s+/).filter(Boolean).map(s=>s[0]).slice(0,2).join('').toUpperCase();
+function failText(d){if(d.failAt<=NOW)return'bereits leer';const r=Math.round(d.failAt/HOUR)*HOUR;return`${fmtDay(r)}, gegen ${p2(new Date(r).getHours())} Uhr`}
+// Vorschlag für einen Wechseltermin: einen Tag vor dem voraussichtlichen Ausfall, frühestens heute
+function suggestAt(d){return Math.max(NOW,d.failAt-DAY)}
 function battHTML(d){return`<span class="batt s-${d.status}" aria-hidden="true"><span class="batt-fill" style="width:${Math.max(d.pct,3)}%"></span></span>`}
+const isMgmt=()=>me.role==='chef'||me.role==='mitarbeiter';
+const canSee=d=>me.role!=='admin'&&(me.role!=='tech'||d.tech===me.id);
+const visible=()=>me.role==='tech'?DEV.filter(d=>d.tech===me.id):DEV;
+const techName=d=>{const u=d.tech&&USER(d.tech);return u?u.name:null};
 
 /* ---------- Basiskarte (stilisierter Platzhalter) ---------- */
 const BASE=(()=>{
@@ -511,6 +683,7 @@ const DEFAULT={q:'',site:'',status:'alle',sort:'akku'};
 const state={...DEFAULT,cats:new Set()};
 const filterRoots=[];
 function matches(d,ignoreStatus){
+  if(!canSee(d))return false;
   if(state.q){const q=state.q.toLowerCase();if(!d.name.toLowerCase().includes(q)&&!d.id.toLowerCase().includes(q)&&!d.site.toLowerCase().includes(q))return false}
   if(state.site&&d.site!==state.site)return false;
   if(state.cats.size&&!state.cats.has(d.cat.id))return false;
@@ -569,7 +742,9 @@ function syncFilters(){
 /* ---------- Übersicht ---------- */
 const listEl=$('#ov-list');
 function renderList(list){
-  $('#ov-count').innerHTML=`<strong>${list.length}</strong> von ${DEV.length} Geräten`;
+  const total=visible().length;
+  $('#ov-count').innerHTML=`<strong>${list.length}</strong> von ${total} Geräten`;
+  if(!total){listEl.innerHTML=`<li class="empty"><p>Ihnen sind noch keine Geräte zugeordnet.</p><p>Die Zuordnung übernehmen Firmenchef oder Mitarbeiter auf der Detailseite eines Geräts.</p></li>`;return}
   if(!list.length){listEl.innerHTML=`<li class="empty"><p>Kein Gerät passt zu diesen Filtern.</p><button class="reset" type="button" id="empty-reset">Alle Filter zurücksetzen</button></li>`;
     $('#empty-reset').onclick=()=>{resetFilters();update()};return}
   listEl.innerHTML=list.map(d=>`<li><a class="row" href="#/geraet/${d.id}" data-id="${d.id}">
@@ -603,7 +778,7 @@ function showInfo(id){
 }
 fsMap.onMarker=showInfo;
 fsMap.onBackground=()=>showInfo(null);
-$$('.fs-zoom button').forEach(b=>b.onclick=()=>{const z=b.dataset.z;if(z==='in')fsMap.zoom(1/1.4);else if(z==='out')fsMap.zoom(1.4);else fsMap.fit(filtered().length?filtered():DEV)});
+$$('.fs-zoom button').forEach(b=>b.onclick=()=>{const z=b.dataset.z;if(z==='in')fsMap.zoom(1/1.4);else if(z==='out')fsMap.zoom(1.4);else{const l=filtered();fsMap.fit(l.length?l:DEV)}});
 $('#fs-close').onclick=closeFs;
 $('#fs-toggle').onclick=e=>{const p=$('#fs-panel');const c=p.classList.toggle('collapsed');e.currentTarget.setAttribute('aria-expanded',!c)};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&fsEl.classList.contains('on'))closeFs()});
@@ -617,7 +792,16 @@ function renderDetail(id){
   if(miniMap){miniMap.destroy();miniMap=null}
   if(chartRO){chartRO.disconnect();chartRO=null}
   if(!d){body.innerHTML=`<a class="back" href="#/">← Zurück zur Übersicht</a><div class="d-head"><h1>Gerät nicht gefunden</h1><p>Zur ID „${esc(id)}“ gibt es kein Gerät. Wähle ein Gerät aus der Übersicht.</p></div>`;return}
+  if(!canSee(d)){body.innerHTML=`<a class="back" href="#/">← Zurück zur Übersicht</a><div class="d-head"><h1>Kein Zugriff</h1><p>Das Gerät ${esc(d.id)} ist Ihnen nicht zugeordnet. Servicetechniker sehen nur ihre eigenen Geräte.</p></div>`;return}
   const stale=d.seenMin>60;
+  let techRow='',plan='';
+  if(isMgmt()){
+    const techs=USERS.filter(u=>u.role==='tech');
+    techRow=`<dt><label for="tech-sel">Servicetechniker</label></dt><dd><select id="tech-sel"><option value="">nicht zugeordnet</option>${techs.map(u=>`<option value="${u.id}"${u.id===d.tech?' selected':''}>${esc(u.name)}${u.locked?' (gesperrt)':''}</option>`).join('')}</select><span class="saved" id="tech-saved" hidden>Gespeichert</span></dd>`;
+  }else{
+    const mine=APPTS.filter(a=>a.tech===me.id&&a.dev===d.id).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+    plan=`<div class="plan"><span>${mine.length?`Ihr Termin: <b>${fmtKey(mine[0].date)}, ${mine[0].time} Uhr</b>`:'Noch kein Wechseltermin eingetragen.'}</span><a class="btn" href="#/kalender?g=${d.id}">Wechsel einplanen</a></div>`;
+  }
   body.innerHTML=`
     <a class="back" href="#/">← Zurück zur Übersicht</a>
     <div class="d-head"><h1>${esc(d.name)}</h1><p>${d.cat.name}, Gerät ${d.id}</p></div>
@@ -626,6 +810,7 @@ function renderDetail(id){
         <div class="bigbatt"><span class="bignum">${d.pct}<small>%</small></span>${battHTML(d)}</div>
         <p class="status s-${d.status}"><i class="dot"></i>${STATUS[d.status]}</p>
         <p>${STATUS_TEXT[d.status]}. Reicht bei aktuellem Verbrauch noch ${dur(d.pct/d.perHour)}.</p>
+        ${plan}
       </section>
       <section class="card" aria-label="Gerätedaten">
         <dl class="facts">
@@ -635,6 +820,8 @@ function renderDetail(id){
           <dt>Stromaufnahme</dt><dd>${de(d.amp,2)} A</dd>
           <dt>Letzte Meldung</dt><dd${stale?' class="stale"':''}>${ago(d.seenMin)}${stale?', Verbindung prüfen':''}</dd>
           <dt>Letzter Akkuwechsel</dt><dd>${d.lastSwap?fmtDay(d.lastSwap)+', '+fmtTime(d.lastSwap)+' Uhr':'nicht in den letzten 30 Tagen'}</dd>
+          <dt>Voraussichtlich leer</dt><dd><a href="#/kalender?g=${d.id}">${failText(d)}</a></dd>
+          ${techRow}
         </dl>
       </section>
       <section class="card span2" aria-label="Verlauf des Akkustands">
@@ -650,13 +837,15 @@ function renderDetail(id){
         <div class="mini maphost" id="mini"></div>
       </section>
     </div>`;
+  const sel=$('#tech-sel');
+  if(sel)sel.onchange=()=>{d.tech=sel.value||null;const s=$('#tech-saved');s.hidden=false;clearTimeout(s._t);s._t=setTimeout(()=>s.hidden=true,1800)};
   const chartEl=$('#chart');
   const draw=()=>{renderChart(chartEl,d.hist,chartRange);$$('#range button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.r===chartRange))};
   $('#range').onclick=e=>{const b=e.target.closest('button');if(b){chartRange=b.dataset.r;draw()}};
   let lastW=0;chartRO=new ResizeObserver(()=>{if(chartEl.clientWidth!==lastW){lastW=chartEl.clientWidth;draw()}});chartRO.observe(chartEl);
   draw();
   miniMap=makeMap($('#mini'),'mini');
-  miniMap.setDevices(DEV.filter(x=>x.id===d.id||Math.hypot(x.x-d.x,x.y-d.y)<120),{focusId:d.id});
+  miniMap.setDevices(visible().filter(x=>x.id===d.id||Math.hypot(x.x-d.x,x.y-d.y)<120),{focusId:d.id});
   miniMap.focus(d.id,170);
   miniMap.onBackground=()=>{location.hash='#/karte?g='+d.id};
 }
@@ -697,6 +886,280 @@ function renderChart(host,hist,range){
   hit.addEventListener('pointerleave',()=>hv.setAttribute('visibility','hidden'));
 }
 
+/* ---------- Kalender (F12 voraussichtliche Ausfälle, F13 private Termine) ---------- */
+const calBody=$('#cal-body');
+const cal={y:null,m:null,sel:null,dev:'',time:'08:00',note:'',msg:''};
+function calEvents(){
+  const map={};const add=(k,e)=>(map[k]||(map[k]=[])).push(e);
+  visible().forEach(d=>add(dkey(d.failAt),{type:'fail',d,sort:'1'+d.failAt}));
+  if(me.role==='tech')APPTS.filter(a=>a.tech===me.id&&BY_ID[a.dev]).forEach(a=>add(a.date,{type:'appt',a,d:BY_ID[a.dev],sort:'0'+a.time}));
+  for(const k in map)map[k].sort((a,b)=>a.sort.localeCompare(b.sort));
+  return map;
+}
+function openCalendar(query){
+  if(cal.y===null){const n=new Date(NOW);cal.y=n.getFullYear();cal.m=n.getMonth();cal.sel=dkey(NOW)}
+  const g=new URLSearchParams(query||'').get('g'),d=g&&BY_ID[g];
+  if(d&&canSee(d)){
+    cal.sel=dkey(me.role==='tech'?suggestAt(d):d.failAt);
+    if(me.role==='tech')cal.dev=d.id;
+    const k=parseKey(cal.sel);cal.y=k.getFullYear();cal.m=k.getMonth();
+  }
+  drawCalendar();
+}
+function keepForm(){
+  const f=$('#apf');if(!f)return;
+  cal.dev=f.dev.value;cal.time=f.time.value||'08:00';cal.note=f.note.value;
+}
+function drawCalendar(){
+  const tech=me.role==='tech';
+  const ev=calEvents(),todayK=dkey(NOW);
+  const first=new Date(cal.y,cal.m,1),off=(first.getDay()+6)%7;
+  const days=new Date(cal.y,cal.m+1,0).getDate(),cells=Math.ceil((off+days)/7)*7;
+  let grid=['Mo','Di','Mi','Do','Fr','Sa','So'].map(w=>`<div class="cal-dow">${w}</div>`).join('');
+  for(let i=0;i<cells;i++){
+    const dt=new Date(cal.y,cal.m,1-off+i),k=dkey(dt.getTime()),list=ev[k]||[];
+    const pills=list.slice(0,3).map(e=>e.type==='fail'
+      ?`<span class="ev s-krit">${esc(e.d.name)}</span>`
+      :`<span class="ev appt">${e.a.time} ${esc(e.d.name.split(' ')[0])}</span>`).join('');
+    const more=list.length>3?`<span class="ev-more">+${list.length-3} weitere</span>`:'';
+    const dots=list.length?`<span class="dots">${list.map(e=>`<i class="dot ${e.type==='fail'?'s-krit':'appt'}"></i>`).join('')}</span>`:'';
+    const cls=['cal-day',dt.getMonth()!==cal.m?'out':'',k===todayK?'today':'',k===cal.sel?'sel':''].join(' ');
+    const lbl=`${WDL[dt.getDay()]}, ${dt.getDate()}. ${MONTHS[dt.getMonth()]}: ${list.length?list.length+(list.length===1?' Eintrag':' Einträge'):'keine Einträge'}`;
+    grid+=`<button type="button" class="${cls}" data-day="${k}" aria-label="${lbl}"${k===cal.sel?' aria-pressed="true"':''}><span class="num">${dt.getDate()}</span>${pills}${more}${dots}</button>`;
+  }
+
+  // Tagesansicht
+  const sd=parseKey(cal.sel),dayList=ev[cal.sel]||[];
+  const agenda=dayList.length?`<ul class="agenda">${dayList.map(e=>{
+    if(e.type==='fail'){
+      const tn=techName(e.d);
+      return`<li class="ag s-krit"><i class="dot"></i><div>
+        <a href="#/geraet/${e.d.id}">${esc(e.d.name)}</a>
+        <span class="meta">Voraussichtlich leer ${e.d.failAt<=NOW?'(bereits leer)':`gegen ${p2(new Date(Math.round(e.d.failAt/HOUR)*HOUR).getHours())} Uhr`}, aktuell ${e.d.pct} %</span>
+        ${tech?`<button type="button" class="reset" data-plan="${e.d.id}">Wechsel einplanen</button>`
+              :`<span class="meta">${tn?`Servicetechniker: ${esc(tn)}`:'<span class="warn">Kein Servicetechniker zugeordnet</span>'}</span>`}
+      </div></li>`;
+    }
+    return`<li class="ag appt"><i class="dot"></i><div>
+      <b>${e.a.time} Uhr, Batteriewechsel</b>
+      <a href="#/geraet/${e.d.id}">${esc(e.d.name)}</a>
+      ${e.a.note?`<span class="meta">${esc(e.a.note)}</span>`:''}
+      <button type="button" class="reset" data-del="${e.a.id}">Termin löschen</button>
+    </div></li>`;
+  }).join('')}</ul>`:`<p class="hint">Keine ${tech?'Ausfälle oder Termine':'voraussichtlichen Ausfälle'} an diesem Tag.</p>`;
+
+  // Demnächst
+  const soon=[...visible()].sort((a,b)=>a.failAt-b.failAt).slice(0,5);
+  const soonHTML=soon.length?`<ul class="soon">${soon.map(d=>`<li><button type="button" data-day="${dkey(d.failAt)}">
+      <span class="lvl">${battHTML(d)}</span><span class="info"><span class="name">${esc(d.name)}</span><span class="meta">${d.pct} %, ${d.site}</span></span><span class="when">${d.failAt<=NOW?'leer':fmtDay(d.failAt)}</span></button></li>`).join('')}</ul>`
+    :`<p class="hint">Keine Geräte vorhanden.</p>`;
+
+  // Formular für eigene Termine (nur Servicetechniker)
+  let form='';
+  if(tech){
+    const devs=[...visible()].sort((a,b)=>a.failAt-b.failAt);
+    form=`<section class="card" aria-label="Wechseltermin eintragen">
+      <h2>Wechseltermin eintragen</h2>
+      ${devs.length?`<form class="form" id="apf" novalidate>
+        <label class="field"><span>Gerät</span><select name="dev" required><option value="">Gerät wählen</option>${devs.map(d=>`<option value="${d.id}"${d.id===cal.dev?' selected':''}>${esc(d.name)} (${d.pct} %)</option>`).join('')}</select></label>
+        <div class="two">
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${cal.sel}" required></label>
+          <label class="field"><span>Uhrzeit</span><input type="time" name="time" value="${esc(cal.time)}" required></label>
+        </div>
+        <label class="field"><span>Notiz (optional)</span><input type="text" name="note" maxlength="80" value="${esc(cal.note)}" placeholder="z. B. Ersatzakku mitnehmen"></label>
+        <p class="hint" id="apf-hint">Termine sind privat und nur für Sie sichtbar.</p>
+        <button class="btn" type="submit">Termin speichern</button>
+      </form>`:`<p class="hint">Ihnen sind noch keine Geräte zugeordnet.</p>`}
+    </section>`;
+  }
+
+  calBody.innerHTML=`
+    <div class="d-head"><h1>Kalender</h1><p>${tech?'Voraussichtliche Ausfälle Ihrer Geräte und Ihre eigenen Wechseltermine':'Voraussichtliche Batterie-Ausfälle aller Geräte, geschätzt aus dem Verbrauch der letzten 24 Stunden'}</p></div>
+    ${cal.msg?`<p class="msg" role="status">${esc(cal.msg)}</p>`:''}
+    <div class="cal-wrap">
+      <section class="card" aria-label="Monatsansicht">
+        <div class="cal-head">
+          <h2>${MONTHS[cal.m]} ${cal.y}</h2>
+          <button type="button" class="btn-s" data-cm="-1" aria-label="Vorheriger Monat">‹</button>
+          <button type="button" class="btn-s" data-cm="0">Heute</button>
+          <button type="button" class="btn-s" data-cm="1" aria-label="Nächster Monat">›</button>
+        </div>
+        <div class="cal-grid">${grid}</div>
+        <p class="cal-legend"><span class="s-krit"><i class="dot"></i>voraussichtlicher Ausfall</span>${tech?'<span class="appt"><i class="dot"></i>eigener Wechseltermin</span>':''}</p>
+      </section>
+      <div class="cal-side">
+        <section class="card" aria-label="Ausgewählter Tag"><h2>${WDL[sd.getDay()]}, ${sd.getDate()}. ${MONTHS[sd.getMonth()]}</h2>${agenda}</section>
+        ${form}
+        <section class="card" aria-label="Nächste Ausfälle"><h2>Als Nächstes leer</h2>${soonHTML}</section>
+      </div>
+    </div>`;
+  cal.msg='';
+  checkApptHint();
+}
+function checkApptHint(){
+  const f=$('#apf'),h=$('#apf-hint');if(!f)return;
+  const d=BY_ID[f.dev.value];
+  if(d&&f.date.value&&f.date.value>dkey(d.failAt)){h.className='hint warn';h.textContent=`Achtung: Das Gerät ist voraussichtlich schon am ${fmtDay(d.failAt)} leer.`}
+  else if(f.date.value&&f.date.value<dkey(NOW)){h.className='hint warn';h.textContent='Das Datum liegt in der Vergangenheit.'}
+  else{h.className='hint';h.textContent='Termine sind privat und nur für Sie sichtbar.'}
+}
+calBody.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cm!==undefined){
+    keepForm();
+    const s=+b.dataset.cm;
+    if(s===0){const n=new Date(NOW);cal.y=n.getFullYear();cal.m=n.getMonth();cal.sel=dkey(NOW)}
+    else{const n=new Date(cal.y,cal.m+s,1);cal.y=n.getFullYear();cal.m=n.getMonth()}
+    drawCalendar();
+  }else if(b.dataset.day){
+    keepForm();
+    cal.sel=b.dataset.day;const k=parseKey(cal.sel);cal.y=k.getFullYear();cal.m=k.getMonth();
+    drawCalendar();
+  }else if(b.dataset.plan){
+    keepForm();
+    const d=BY_ID[b.dataset.plan];cal.dev=d.id;cal.sel=dkey(suggestAt(d));
+    const k=parseKey(cal.sel);cal.y=k.getFullYear();cal.m=k.getMonth();
+    drawCalendar();$('#apf').time.focus();
+  }else if(b.dataset.del){
+    keepForm();
+    APPTS=APPTS.filter(a=>a.id!==+b.dataset.del);cal.msg='Termin gelöscht.';drawCalendar();
+  }
+});
+calBody.addEventListener('input',e=>{if(e.target.closest('#apf'))checkApptHint()});
+calBody.addEventListener('submit',e=>{
+  e.preventDefault();
+  const f=e.target,h=$('#apf-hint');
+  if(!f.dev.value||!f.date.value||!f.time.value){h.className='hint warn';h.textContent='Bitte Gerät, Datum und Uhrzeit angeben.';return}
+  APPTS.push({id:nextAid++,tech:me.id,dev:f.dev.value,date:f.date.value,time:f.time.value,note:f.note.value.trim()});
+  cal.sel=f.date.value;const k=parseKey(cal.sel);cal.y=k.getFullYear();cal.m=k.getMonth();
+  cal.msg=`Termin am ${fmtKey(cal.sel)} um ${f.time.value} Uhr gespeichert.`;
+  cal.dev='';cal.note='';cal.time='08:00';
+  drawCalendar();
+});
+
+/* ---------- Admin: Nutzerverwaltung ---------- */
+const admBody=$('#adm-body');
+const adm={q:'',role:'',pendingDel:null,msg:''};
+function renderAdmin(){
+  admBody.innerHTML=`
+    <div class="d-head"><h1>Nutzerverwaltung</h1><p>Konten anlegen, sperren und löschen. Gesperrte Nutzer können sich nicht mehr anmelden.</p></div>
+    <p class="msg" role="status" id="adm-msg" hidden></p>
+    <div class="stats" id="adm-stats"></div>
+    <div class="adm-grid">
+      <section class="card" aria-label="Neuen Nutzer anlegen">
+        <h2>Neuen Nutzer anlegen</h2>
+        <form class="form" id="nu" novalidate>
+          <label class="field"><span>Name</span><input type="text" name="fullname" autocomplete="off" placeholder="Vorname Nachname" required></label>
+          <label class="field"><span>E-Mail</span><input type="email" name="email" autocomplete="off" placeholder="name@betreiber.de" required></label>
+          <label class="field"><span>Rolle</span><select name="role">${Object.entries(ROLES).map(([k,v])=>`<option value="${k}"${k==='tech'?' selected':''}>${v}</option>`).join('')}</select></label>
+          <p class="hint" id="nu-hint">Der Nutzer erhält eine E-Mail mit einem Link, um sein Passwort festzulegen.</p>
+          <button class="btn" type="submit">Nutzer anlegen</button>
+        </form>
+      </section>
+      <section class="card" aria-label="Alle Nutzer">
+        <div class="card-head"><h2>Alle Nutzer</h2>
+          <div class="tbl-filters">
+            <input type="search" data-a="q" placeholder="Name oder E-Mail suchen" autocomplete="off" value="${esc(adm.q)}" aria-label="Nutzer suchen">
+            <select data-a="role" aria-label="Nach Rolle filtern"><option value="">Alle Rollen</option>${Object.entries(ROLES).map(([k,v])=>`<option value="${k}"${adm.role===k?' selected':''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <table class="users">
+          <thead><tr><th>Nutzer</th><th>Rolle</th><th>Status</th><th>Zuletzt angemeldet</th><th><span class="sr">Aktionen</span></th></tr></thead>
+          <tbody id="adm-rows"></tbody>
+        </table>
+      </section>
+    </div>`;
+  renderUsers();
+}
+function renderUsers(){
+  const stats=[[USERS.length,'Nutzer gesamt'],[USERS.filter(u=>!u.locked).length,'aktiv'],[USERS.filter(u=>u.locked).length,'gesperrt'],[USERS.filter(u=>u.role==='tech').length,'Servicetechniker']];
+  $('#adm-stats').innerHTML=stats.map(([n,l])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join('');
+  const m=$('#adm-msg');m.hidden=!adm.msg;m.textContent=adm.msg;
+  const q=adm.q.toLowerCase();
+  const order=Object.keys(ROLES);
+  const list=USERS.filter(u=>(!adm.role||u.role===adm.role)&&(!q||u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q)))
+    .sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role)||a.name.localeCompare(b.name,'de'));
+  $('#adm-rows').innerHTML=list.length?list.map(u=>{
+    const n=u.role==='tech'?DEV.filter(d=>d.tech===u.id).length:0;
+    let act;
+    if(u.id===me.id)act=`<span class="hint">eigenes Konto</span>`;
+    else if(adm.pendingDel===u.id)act=`<span class="q">Wirklich löschen?</span><button type="button" class="btn-s danger-solid" data-del="${u.id}">Löschen</button><button type="button" class="btn-s" data-cancel>Abbrechen</button>`;
+    else act=`<button type="button" class="btn-s" data-lock="${u.id}">${u.locked?'Entsperren':'Sperren'}</button><button type="button" class="btn-s danger" data-ask="${u.id}">Löschen</button>`;
+    return`<tr class="${u.locked?'locked':''}">
+      <td><div class="u"><span class="av">${esc(initials(u.name))}</span><div><span><b>${esc(u.name)}</b>${u.id===me.id?'<span class="you">Sie</span>':''}</span><span class="meta">${esc(u.email)}</span></div></div></td>
+      <td><span class="role r-${u.role}">${ROLES[u.role]}</span>${u.role==='tech'?`<span class="meta" style="display:block">${n} ${n===1?'Gerät':'Geräte'}</span>`:''}</td>
+      <td><span class="st ${u.locked?'s-krit':'s-ok'}"><i class="dot"></i>${u.locked?'Gesperrt':'Aktiv'}</span></td>
+      <td class="muted">${u.last?ago(Math.round((NOW-u.last)/60e3)):'noch nie'}</td>
+      <td><div class="act">${act}</div></td></tr>`;
+  }).join(''):`<tr><td colspan="5" class="muted">Kein Nutzer passt zur Suche.</td></tr>`;
+}
+admBody.addEventListener('input',e=>{const a=e.target.dataset.a;if(!a)return;adm[a]=e.target.value;adm.pendingDel=null;renderUsers()});
+admBody.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.lock){
+    const u=USER(b.dataset.lock);u.locked=!u.locked;
+    adm.msg=`${u.name} wurde ${u.locked?'gesperrt':'entsperrt'}.`;
+  }else if(b.dataset.ask){adm.pendingDel=b.dataset.ask;adm.msg=''}
+  else if('cancel' in b.dataset){adm.pendingDel=null}
+  else if(b.dataset.del){
+    const u=USER(b.dataset.del);
+    const freed=DEV.filter(d=>d.tech===u.id);freed.forEach(d=>d.tech=null);
+    APPTS=APPTS.filter(a=>a.tech!==u.id);
+    USERS.splice(USERS.indexOf(u),1);adm.pendingDel=null;
+    adm.msg=`${u.name} wurde gelöscht.`+(freed.length?` ${freed.length} ${freed.length===1?'Gerät ist':'Geräte sind'} jetzt keinem Servicetechniker zugeordnet.`:'');
+  }else return;
+  renderUsers();renderSwitcher();
+});
+admBody.addEventListener('submit',e=>{
+  e.preventDefault();
+  const f=e.target,h=$('#nu-hint');
+  const name=f.fullname.value.trim().replace(/\s+/g,' '),email=f.email.value.trim().toLowerCase(),role=f.role.value;
+  let err='';
+  if(!name)err='Bitte einen Namen eingeben.';
+  else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))err='Bitte eine gültige E-Mail-Adresse eingeben.';
+  else if(USERS.some(u=>u.email.toLowerCase()===email))err='Zu dieser E-Mail-Adresse gibt es bereits ein Konto.';
+  if(err){h.className='hint warn';h.textContent=err;return}
+  USERS.push({id:'u'+nextUid++,name,email,role,locked:false,last:null});
+  f.reset();f.role.value=role;
+  h.className='hint';h.textContent='Der Nutzer erhält eine E-Mail mit einem Link, um sein Passwort festzulegen.';
+  adm.msg=`${name} wurde als ${ROLES[role]} angelegt.`;
+  renderUsers();renderSwitcher();f.fullname.focus();
+});
+
+/* ---------- Kopfzeile, Navigation & Ansicht-Umschalter ---------- */
+const NAV={
+  admin:[['#/admin','adm','Nutzerverwaltung']],
+  chef:[['#/','ov','Übersicht'],['#/karte','fs','Karte'],['#/kalender','cal','Kalender']],
+  tech:[['#/','ov','Meine Geräte'],['#/karte','fs','Karte'],['#/kalender','cal','Kalender']]
+};
+NAV.mitarbeiter=NAV.chef;
+function renderChrome(){
+  $('#nav').innerHTML=NAV[me.role].map(([h,k,l])=>`<a href="${h}" data-nav="${k}">${l}</a>`).join('');
+  $('#who').innerHTML=`<span class="av">${esc(initials(me.name))}</span><span><b>${esc(me.name)}</b><small>${ROLES[me.role]}</small></span>`;
+  renderSwitcher();
+}
+const rsMenu=$('#rs-menu'),rsBtn=$('#rs-btn');
+function renderSwitcher(){
+  $('#rs-cur').textContent=ROLES[me.role];
+  rsMenu.innerHTML=`<p>Testmodus: ersetzt vorerst den Login.</p>`+Object.entries(ROLES).map(([r,l])=>{
+    const us=USERS.filter(u=>u.role===r);if(!us.length)return'';
+    return`<h3>${l}</h3>`+us.map(u=>`<button type="button" role="menuitemradio" aria-checked="${u.id===me.id}" data-user="${u.id}"${u.locked?' disabled':''}>
+      <span class="av">${esc(initials(u.name))}</span>${esc(u.name)}${u.locked?'<em>gesperrt</em>':''}</button>`).join('');
+  }).join('');
+}
+function toggleMenu(open){rsMenu.hidden=!open;rsBtn.setAttribute('aria-expanded',open);if(open){const c=$('[aria-checked="true"]',rsMenu)||$('button:not(:disabled)',rsMenu);c&&c.focus()}}
+rsBtn.onclick=()=>toggleMenu(rsMenu.hidden);
+rsMenu.addEventListener('click',e=>{const b=e.target.closest('[data-user]');if(!b||b.disabled)return;toggleMenu(false);setUser(b.dataset.user);rsBtn.focus()});
+document.addEventListener('click',e=>{if(!rsMenu.hidden&&!e.target.closest('#rs'))toggleMenu(false)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!rsMenu.hidden){toggleMenu(false);rsBtn.focus()}});
+
+function setUser(id){
+  const u=USER(id);if(!u||u.locked)return;
+  me=u;try{localStorage.setItem('bw-user',id)}catch(e){}
+  resetFilters();showInfo(null);cal.dev='';cal.note='';cal.msg='';adm.pendingDel=null;adm.msg='';
+  renderChrome();update();route();
+}
+
 /* ---------- Aktualisieren & Routing ---------- */
 function update(){
   const list=filtered();
@@ -704,7 +1167,7 @@ function update(){
   ovMap.setDevices(list);ovMap.fit(list.length?list:DEV);
   fsMap.setDevices(list);
   if(fsSel)showInfo(fsSel);
-  $('#fs-count').textContent=`${list.length} von ${DEV.length} Geräten`;
+  $('#fs-count').textContent=`${list.length} von ${visible().length} Geräten`;
   syncFilters();
 }
 function show(view){
@@ -712,29 +1175,36 @@ function show(view){
 }
 function route(){
   const h=location.hash||'#/';const[path,query]=h.slice(1).split('?');
+  // Rollenrechte: Admin sieht nur die Nutzerverwaltung, alle anderen nie
+  if(me.role==='admin'&&path!=='/admin'){location.replace('#/admin');return}
+  if(me.role!=='admin'&&path==='/admin'){location.replace('#/');return}
   let navOn='ov';
   if(path==='/karte'){
-    if(!$('.view.on'))show('ov');
-    const g=new URLSearchParams(query||'').get('g');
-    if(g&&BY_ID[g]&&!matches(BY_ID[g])){resetFilters();update()}
-    fsEl.classList.add('on');document.body.style.overflow='hidden';
+    if(!$('.view.on')||$('#adm').classList.contains('on'))show('ov');
+    const g=new URLSearchParams(query||'').get('g'),gd=g&&BY_ID[g]&&canSee(BY_ID[g])?g:null;
+    if(gd&&!matches(BY_ID[gd])){resetFilters();update()}
+    fsEl.classList.add('on');document.body.classList.add('fs-open');document.body.style.overflow='hidden';
     requestAnimationFrame(()=>{
       fsMap.relayout();
-      if(g&&BY_ID[g]){fsMap.focus(g,140);showInfo(g)}else{const l=filtered();fsMap.fit(l.length?l:DEV)}
+      if(gd){fsMap.focus(gd,140);showInfo(gd)}else{const l=filtered();fsMap.fit(l.length?l:DEV)}
     });
     navOn='fs';
   }else{
-    fsEl.classList.remove('on');document.body.style.overflow='';
+    fsEl.classList.remove('on');document.body.classList.remove('fs-open');document.body.style.overflow='';
     if(path.startsWith('/geraet/')){show('det');renderDetail(decodeURIComponent(path.slice(8)));backHash=h;navOn=''}
+    else if(path==='/kalender'){show('cal');openCalendar(query);backHash=h;navOn='cal'}
+    else if(path==='/admin'){show('adm');renderAdmin();navOn='adm'}
     else{show('ov');backHash='#/';requestAnimationFrame(ovMap.relayout)}
-    window.scrollTo(0,0);$('#det').scrollTop=0;
+    window.scrollTo(0,0);$$('#det,#cal,#adm').forEach(v=>v.scrollTop=0);
   }
   $$('nav a').forEach(a=>{if(a.dataset.nav===navOn)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
 }
 
 $('#stamp').textContent=`Stand heute, ${fmtTime(Date.now())} Uhr`;
+try{const s=USER(localStorage.getItem('bw-user'));if(s&&!s.locked)me=s}catch(e){}
 buildFilters($('#ov-filters'),'ov');
 buildFilters($('#fs-filters'),'fs');
+renderChrome();
 update();
 window.addEventListener('hashchange',route);
 route();
