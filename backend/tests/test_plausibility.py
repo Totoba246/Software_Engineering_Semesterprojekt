@@ -22,7 +22,8 @@ def test_judge():
     assert judge(m(START, 11_800), r) == "ok"
     assert judge(m(START, 5_368_709_120, -1.25), r) == "unmöglich"  # node 101's read error
     assert judge(m(START, 0), r) == "unmöglich"
-    assert judge(m(START, 11_800, -1.25), r) == "auffällig"  # no load / sensor offset
+    assert judge(m(START, 12_710, -290), r) == "ok"  # node 101 reports discharge as negative
+    assert judge(m(START, 11_800, 6_000), r) == "auffällig"  # 6 A: far more than a traffic light draws
     assert judge(m(START, 3_000), r) == "auffällig"  # possible, but not a 12 V battery
 
 
@@ -50,3 +51,11 @@ def test_report_all_good():
 
 def test_report_nothing_plausible():
     assert "KEIN einziger plausibler Messwert" in report([m(START, 5_368_709_120, -1.25)])
+
+
+def test_report_shows_values_and_negative_current_like_node_101():
+    rows = [m(START + timedelta(minutes=15 * k), 12_700 - k, -300) for k in range(96)]
+    text = report(rows)
+    assert "100 % negativ  -> Entladung wird NEGATIV gemeldet" in text
+    assert "12.70" in text  # voltage visible in the day table
+    assert "Bis zum Ende überwiegend plausible Werte." in text

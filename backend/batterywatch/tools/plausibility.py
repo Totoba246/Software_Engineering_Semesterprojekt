@@ -15,7 +15,9 @@ HOW A SINGLE READING IS JUDGED (all values in mV / mA, like the nodes send)
     "unmöglich"  outside the hard limits of the MQTT contract
                  (voltage <= 0 or > 60 V, current beyond +-100 A) -> never imported
     "auffällig"  physically possible, but not what a 12 V traffic light battery
-                 does: voltage outside 9-15 V or current outside 0-5 A
+                 does: voltage outside 9-15 V or current beyond +-5 A.
+                 Negative current is OK: node 101 reports discharge as negative
+                 (about -0.3 A in the course history database).
                  (e.g. -1.25 mA = no load / sensor not reading)
     "ok"         everything else
 """
@@ -39,7 +41,7 @@ class Rules:
 
     v_min_mv: float = 9_000      # a 12 V lead battery is deeply discharged below ~10.5 V; 9 V leaves room
     v_max_mv: float = 15_000     # even while charging, a 12 V battery stays below ~14.8 V
-    i_min_ma: float = 0          # negative = current flowing the wrong way / sensor offset
+    i_min_ma: float = -5_000     # negative = discharge (sign convention of node 101)
     i_max_ma: float = 5_000      # the traffic light draws ~0.5-0.7 A
     swap_jump_mv: float = 500    # voltage rising this much (also across a gap) = battery swapped
     swap_window: timedelta = timedelta(hours=12)  # compare readings up to 12 h before/after
@@ -70,6 +72,16 @@ def _v(mv: float) -> str:
     return f"{mv / 1000:.2f}" if abs(mv) < 1e6 else f"{mv:.0f}mV"
 
 
+def _current_sign_line(rows: list[Measurement], verdicts: list[str]) -> str:
+    """How the node reports current: mostly negative = discharge is reported as negative."""
+    currents = [m.current_ma for m, v in zip(rows, verdicts) if v != "unmöglich"]
+    if not currents:
+        return "Strom:      -"
+    negative = sum(1 for c in currents if c < 0) / len(currents)
+    hint = "  -> Entladung wird NEGATIV gemeldet" if negative > 0.9 else ""
+    return f"Strom:      typisch {median(currents) / 1000:.3f} A, {negative * 100:.0f} % negativ{hint}"
+
+
 def _device_report(device_id: str, rows: list[Measurement], rules: Rules) -> list[str]:
     rows = sorted(rows, key=lambda m: m.measured_at)
     verdicts = [judge(m, rules) for m in rows]
@@ -81,6 +93,7 @@ def _device_report(device_id: str, rows: list[Measurement], rules: Rules) -> lis
         f"Messwerte:  {len(rows)}  davon ok {counts['ok']}, auffällig {counts['auffällig']}, "
         f"unmöglich {counts['unmöglich']}",
         f"Takt:       typisch alle {median(steps) / 60:.1f} Min." if steps else "Takt:       -",
+        _current_sign_line(rows, verdicts),
         "",
         "Tag         Anzahl  ok%   U min / typisch / max [V]   I typisch [A]  Bemerkung",
     ]
@@ -94,10 +107,13 @@ def _device_report(device_id: str, rows: list[Measurement], rules: Rules) -> lis
         ok = [m for m, v in items if v == "ok"]
         share = len(ok) / len(items)
         day_ok_share[day] = share
-        if ok:
-            volts = [m.voltage_mv for m in ok]
+        # values of all POSSIBLE readings (ok + auffällig), so you can always see
+        # what was measured; "unmöglich" ones (e.g. 5368709120 mV) are left out
+        possible = [m for m, v in items if v != "unmöglich"]
+        if possible:
+            volts = [m.voltage_mv for m in possible]
             v_txt = f"{_v(min(volts)):>6} / {_v(median(volts)):>6} / {_v(max(volts)):>6}"
-            i_txt = f"{median(m.current_ma for m in ok) / 1000:6.3f}"
+            i_txt = f"{median(m.current_ma for m in possible) / 1000:6.3f}"
         else:
             v_txt, i_txt = f"{'-':>6} / {'-':>6} / {'-':>6}", f"{'-':>6}"
         bad = Counter(v for _, v in items if v != "ok")
