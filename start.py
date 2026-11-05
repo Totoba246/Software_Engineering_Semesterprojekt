@@ -290,13 +290,39 @@ def cmd_history(extra_args: list[str]) -> None:
         print("Tunnel steht.")
 
     try:
-        password = getpass.getpass("\nPasswort der Kurs-DATENBANK (postgres, nicht SSH): ")
+        password = ask_course_db_password()
         say("Lese die Kurs-Datenbank")
         run_import_tool(["history", *extra_args], password)
     finally:
         if tunnel is not None:
             tunnel.terminate()
             print("\nSSH-Tunnel geschlossen.")
+
+
+def ask_course_db_password() -> str:
+    """Ask for the course database password; if possible, check it right away
+    (with the tunnel still open) and ask again if it's wrong - max. 3 tries."""
+    for attempt in range(1, 4):
+        password = getpass.getpass("\nPasswort der Kurs-DATENBANK (postgres, nicht SSH): ").strip()
+        if not _native_python_ready():
+            return password  # can't test it here; the Docker fallback will report errors
+        probe = subprocess.run(
+            [sys.executable, "-c",
+             "import os, psycopg; psycopg.connect(os.environ['SOURCE_DSN'], connect_timeout=15).close()"],
+            env={**os.environ, "SOURCE_DSN": f"host=127.0.0.1 port={TUNNEL_PORT} dbname=measurements "
+                                             f"user={COURSE_USER} password={password}"},
+            capture_output=True, text=True,
+        )
+        if probe.returncode == 0:
+            print("Passwort ok.")
+            return password
+        if "password authentication failed" in probe.stderr:
+            print(f"Falsches Passwort (Versuch {attempt}/3). Achtung: hier das POSTGRES-Passwort, "
+                  "nicht das SSH-Passwort. Die Eingabe ist unsichtbar - einfach neu tippen oder einfügen.")
+        else:
+            fail("Verbindung zur Kurs-Datenbank fehlgeschlagen:\n" + probe.stderr.strip()[-600:])
+    fail("Dreimal falsches Passwort - abgebrochen.")
+    return ""
 
 
 def _native_python_ready() -> bool:
