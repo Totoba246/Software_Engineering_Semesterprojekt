@@ -1,0 +1,15 @@
+[project]
+name = "batterywatch"
+version = "0.1.0"
+description = "BatteryWatch backend: MQTT collector, REST API and developer tools"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["batterywatch*"]
+
+[tool.setuptools.package-data]
+batterywatch = ["schema.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

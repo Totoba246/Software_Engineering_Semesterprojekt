@@ -16,6 +16,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 | 08 | Docker für Entwicklung und Bereitstellung | ✅ akzeptiert |
 | 09 | Login und Autorisierung in Eigenimplementierung | ✅ akzeptiert |
 | 10 | Collection-Service für die Datenaufnahme | ✅ akzeptiert |
+| 11 | Bibliotheken für Backend und Frontend | ✅ akzeptiert |
 
 ---
 
@@ -104,3 +105,16 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
   - ➕ Klar abgegrenzter, einzeln testbarer Datenpfad (passt zu A05: Testpublisher → Broker → Speicherung)
   - ➖ Ein weiterer Container, der betrieben und überwacht werden muss
   - ⚠️ Ungültige Nachrichten werden verworfen und geloggt, nicht gespeichert
+
+## ADR-11 · Bibliotheken für Backend und Frontend
+
+- **Kontext:** ADR-02 und ADR-07 legen Sprache bzw. Framework fest, nicht aber die konkreten Bibliotheken. Collector, API und Tools sollen Code (MQTT-Vertrag, Statusregeln, DB-Zugriff) teilen.
+- **Entscheidung:**
+  - **FastAPI** für die REST-API (automatische OpenAPI-Doku unter `/docs`, Validierung mit Pydantic), **paho-mqtt** für den Collector, **psycopg 3** mit reinem SQL statt ORM.
+  - Ein gemeinsames Python-Paket `batterywatch` und **ein** Docker-Image; Collector und API laufen trotzdem als getrennte Container (ADR-10), nur mit anderem Startbefehl.
+  - Frontend mit **Vite**, **Recharts** für den Verlauf und **Leaflet** mit OpenStreetMap-Kacheln für die Karte.
+- **Konsequenzen:**
+  - ➕ MQTT-Vertrag und Statusregeln existieren nur einmal und werden von Collector, API und Testpublisher gemeinsam genutzt
+  - ➕ SQL bleibt sichtbar und für alle nachvollziehbar (z. B. Glättung, Zeitintervalle des Verlaufs)
+  - ➖ Schemaänderungen ohne Migrationswerkzeug; `schema.sql` ist idempotent, spätere Änderungen brauchen ein Migrationskonzept (B05)
+  - ➖ Kartenkacheln kommen von openstreetmap.org (Internetzugang im Browser nötig, Nutzungsbedingungen beachten)

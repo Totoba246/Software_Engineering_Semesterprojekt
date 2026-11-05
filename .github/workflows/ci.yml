@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - "docs/**/*.svg"
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: batterywatch_test
+          POSTGRES_USER: batterywatch
+          POSTGRES_PASSWORD: batterywatch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U batterywatch"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Start MQTT broker
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mosquitto
+          # the apt package usually starts a localhost broker on 1883 itself
+          timeout 10 bash -c 'until nc -z localhost 1883; do sleep 1; done' || mosquitto -p 1883 -d
+      - run: pip install -r requirements-dev.txt
+      - name: Tests (unit, integration, MQTT end-to-end)
+        env:
+          TEST_DATABASE_URL: postgresql://batterywatch:batterywatch@localhost:5432/batterywatch_test
+          TEST_MQTT_HOST: localhost
+        run: pytest -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

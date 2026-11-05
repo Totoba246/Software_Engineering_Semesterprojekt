@@ -1,0 +1,112 @@
+# BatteryWatch - complete stack (ADR-08)
+#
+#   cp .env.example .env
+#   docker compose up -d --build                      # DB, broker, collector, API, frontend
+#   docker compose --profile test up -d publisher     # + simulated TrafficNodes
+#
+# Frontend: http://localhost:20800   API docs: http://localhost:20801/docs
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-batterywatch}:${POSTGRES_PASSWORD:-batterywatch}@db:5432/${POSTGRES_DB:-batterywatch}
+  SHUNT_RESISTANCE_OHM: ${SHUNT_RESISTANCE_OHM:-0.002}
+  BATTERY_SOC_CURVE: ${BATTERY_SOC_CURVE:-10.5:0,12.7:100}
+  STATUS_CRITICAL_BELOW: ${STATUS_CRITICAL_BELOW:-20}
+  STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
+  SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
+  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-30}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-batterywatch}
+      POSTGRES_USER: ${POSTGRES_USER:-batterywatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-batterywatch}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-20832}:5432"   # only local / via SSH tunnel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mqtt:
+    image: eclipse-mosquitto:2.0.18
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt-data:/mosquitto/data
+    ports:
+      - "127.0.0.1:${MQTT_PORT:-20883}:1883"  # anonymous access -> never expose publicly
+
+  collector:
+    build: ./backend
+    command: ["python", "-m", "batterywatch.collector"]
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      MQTT_HOST: ${COLLECTOR_MQTT_HOST:-mqtt}
+      MQTT_PORT: ${COLLECTOR_MQTT_PORT:-1883}
+      MQTT_TLS: ${COLLECTOR_MQTT_TLS:-false}
+      MQTT_USERNAME: ${COLLECTOR_MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${COLLECTOR_MQTT_PASSWORD:-}
+      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-device/+/+/+/status}
+      MQTT_CLIENT_ID: ${COLLECTOR_MQTT_CLIENT_ID:-batterywatch-llv-collector}
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    ports:
+      - "127.0.0.1:${API_PORT:-20801}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-20800}:80"
+    depends_on:
+      - api
+
+  # Test publisher (A05): simulated TrafficNodes -> local broker.
+  # Writes 30 days of history directly into the DB, then sends live messages via MQTT.
+  # Also used to run the import tool, see docs/Entwicklung.md.
+  publisher:
+    profiles: ["test"]
+    build: ./backend
+    command:
+      - python
+      - -m
+      - batterywatch.tools.test_publisher
+      - simulate
+      - --devices=8
+      - --backfill-hours=720
+      - --backfill-direct
+      - --interval=30
+    environment:
+      <<: *backend-env
+      MQTT_HOST: mqtt
+      MQTT_PORT: "1883"
+    volumes:
+      - ./docs/samples:/samples:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+
+volumes:
+  db-data:
+  mqtt-data:
