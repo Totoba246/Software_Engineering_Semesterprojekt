@@ -51,7 +51,9 @@ ENV_TEMPLATE = ROOT / ".env.example"            # the template it's made from
 COURSE_BROKER = "mqtt.ti-labs.ai"               # where the real nodes publish
 COURSE_SERVER = "212.227.31.76"                 # course server (only for the history database)
 COURSE_USER = "tinf25d-llv"                     # our group's login (SSH, MQTT, history DB)
-TUNNEL_PORT = 15432                             # local end of the SSH tunnel to the history DB
+# local end of the SSH tunnel to the history DB (BW_TUNNEL_PORT only for testing)
+TUNNEL_PORT = int(os.environ.get("BW_TUNNEL_PORT", "15432"))
+BACKEND = ROOT / "backend"                      # our Python code
 
 
 # --- small helpers -------------------------------------------------------------
@@ -250,20 +252,22 @@ def cmd_history(extra_args: list[str]) -> None:
     The history database only listens on the course server itself (127.0.0.1:5432
     THERE). An SSH tunnel makes it appear on YOUR computer at localhost:15432:
         your computer :15432  ==(encrypted SSH connection)==>  server :5432
-    The import tool runs in a container and reaches your computer's localhost
-    under the special name "host.docker.internal".
+    The import tool then runs with YOUR Python if the libraries are installed
+    (backend/requirements-dev.txt) - it reaches the tunnel directly at 127.0.0.1.
+    Otherwise it runs in a Docker container, which reaches your computer's
+    localhost under the special name "host.docker.internal".
     """
     check_docker()
     if not ENV_FILE.exists():
         fail("Noch nicht eingerichtet - zuerst 'python start.py' ausführen.")
-    if shutil.which("ssh") is None:
-        fail("Das Programm 'ssh' fehlt (bei Windows 10/11 normalerweise eingebaut).")
     compose("up", "-d", "db")  # our local database must be running for the import
 
     tunnel = None
     if _port_open(TUNNEL_PORT):
         print(f"(Port {TUNNEL_PORT} ist schon offen - verwende den bestehenden Tunnel.)")
     else:
+        if shutil.which("ssh") is None:
+            fail("Das Programm 'ssh' fehlt (bei Windows 10/11 normalerweise eingebaut).")
         say(f"Öffne SSH-Tunnel zum Kursserver {COURSE_SERVER}")
         print(f"Gleich fragt ssh nach dem SSH-PASSWORT für {COURSE_USER} (Eingabe bleibt unsichtbar).")
         print("Bei der allerersten Verbindung evtl. vorher 'yes' eingeben.\n")
@@ -287,17 +291,45 @@ def cmd_history(extra_args: list[str]) -> None:
 
     try:
         password = getpass.getpass("\nPasswort der Kurs-DATENBANK (postgres, nicht SSH): ")
-        # Handed to the container as an environment variable, not as an argument.
-        source = (f"host=host.docker.internal port={TUNNEL_PORT} dbname=measurements "
-                  f"user={COURSE_USER} password={password}")
         say("Lese die Kurs-Datenbank")
-        compose("--profile", "tools", "run", "--rm", "-e", "SOURCE_DSN", "tools",
-                "python", "-m", "batterywatch.tools.import_data", "history", *extra_args,
-                env={"SOURCE_DSN": source}, check=False)
+        run_import_tool(["history", *extra_args], password)
     finally:
         if tunnel is not None:
             tunnel.terminate()
             print("\nSSH-Tunnel geschlossen.")
+
+
+def _native_python_ready() -> bool:
+    """Are our backend libraries installed in the Python running this script?"""
+    probe = subprocess.run([sys.executable, "-c", "import psycopg, psycopg_pool, pydantic, paho.mqtt"],
+                           cwd=BACKEND, capture_output=True)
+    return probe.returncode == 0
+
+
+def run_import_tool(args: list[str], source_password: str) -> int:
+    """Run backend/batterywatch/tools/import_data.py with the given arguments.
+
+    Passwords are handed over as environment variables (not as arguments),
+    so they don't show up in process lists.
+    """
+    env = read_env()
+    source = "dbname=measurements user={u} password={p} port={port} host=".format(
+        u=COURSE_USER, p=source_password, port=TUNNEL_PORT)
+    if _native_python_ready():
+        # Your own Python: reaches the tunnel and our database directly on this computer.
+        print("(mit deinem Python, ohne Docker-Container)")
+        local_db = "postgresql://{u}:{p}@127.0.0.1:{port}/{db}".format(
+            u=env.get("POSTGRES_USER", "batterywatch"), p=env.get("POSTGRES_PASSWORD", ""),
+            port=env.get("DB_PORT", "20832"), db=env.get("POSTGRES_DB", "batterywatch"))
+        return subprocess.run(
+            [sys.executable, "-m", "batterywatch.tools.import_data", *args], cwd=BACKEND,
+            env={**os.environ, "SOURCE_DSN": source + "127.0.0.1", "DATABASE_URL": local_db},
+        ).returncode
+    # Fallback: inside a container; Docker Desktop's name for "this computer".
+    print("(im Docker-Container - schneller wäre: python -m pip install -r backend/requirements-dev.txt)")
+    return compose("--profile", "tools", "run", "--rm", "-e", "SOURCE_DSN", "tools",
+                   "python", "-m", "batterywatch.tools.import_data", *args,
+                   env={"SOURCE_DSN": source + "host.docker.internal"}, check=False)
 
 
 COMMANDS = {

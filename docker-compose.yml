@@ -223,8 +223,10 @@ services:
   # ---------------------------------------------------------------------------
   # tools: runs one-off commands, e.g. reading the course history database
   # (`python start.py check-history` / `import-history`). Never runs on its own.
-  # "host.docker.internal" = YOUR computer as seen from inside the container,
-  # needed to reach the SSH tunnel that start.py opens on localhost:15432.
+  # start.py prefers running those commands with your own Python; this
+  # container is the fallback. Inside it, "host.docker.internal" = YOUR computer
+  # (provided by Docker Desktop itself - don't override it with extra_hosts:
+  # on Docker Desktop that turned into an unreachable IPv6 address).
   # ---------------------------------------------------------------------------
   tools:
     profiles: ["tools"]
@@ -232,8 +234,6 @@ services:
     command: ["python", "-m", "batterywatch.tools.import_data", "--help"]
     environment:
       <<: *backend-env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./docs/samples:/samples:ro
     depends_on:

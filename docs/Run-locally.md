@@ -55,6 +55,12 @@ shows the device with a red note explaining why the value was rejected.
 
 ## The course history database (old measurements)
 
+Once beforehand (installs our Python libraries, so the check runs with your own Python):
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+```
+
 ```bash
 python start.py check-history      # report: which data is plausible, from when on not?
 python start.py import-history     # copy it into your local database
