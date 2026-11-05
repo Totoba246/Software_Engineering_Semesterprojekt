@@ -277,6 +277,51 @@ def test_import_history_skips_empty_tables_and_reads_device_from_topic(db_url, d
         db.execute("TRUNCATE measurements, devices, raw_messages")
         with pytest.raises(SystemExit) as exc:
             import_data.main(["history", "--source-dsn", db_url, "--check"])
-        assert "alle LEER" in str(exc.value) and "src.nodedata  (0 rows)" in str(exc.value)
+        assert "keine Zeile Zeit + Strom + Spannung" in str(exc.value)
+        assert "src.nodedata  (0 rows)" in str(exc.value)
     finally:
         db.execute("DROP SCHEMA src CASCADE")
+
+
+COURSE_COLUMNS = ("id bigint, received_at timestamptz, measured_at timestamptz, serial_number text, topic text, "
+                  "current_ma float8, voltage_mv float8, lat float8, lon float8, altitude_m float8, "
+                  "satellites int, device_time jsonb, payload jsonb, raw_payload bytea, qos smallint, "
+                  "retained boolean, duplicate_delivery boolean, parse_errors text[]")
+
+
+def test_import_history_with_course_database_layout(db_url, db, capsys):
+    """Layout of the real course DB (history.measurements): measured_at is empty
+    (node 101 sends "time": null), the time is in received_at, and values may only
+    be in the JSON payload."""
+    db.execute("DROP SCHEMA IF EXISTS history CASCADE")
+    db.execute("CREATE SCHEMA history")
+    db.execute(f"CREATE TABLE history.measurements ({COURSE_COLUMNS})")
+    db.execute(f"CREATE TABLE history.mqtt_messages ({COURSE_COLUMNS}, ingestion_id uuid, message_type text)")
+    db.execute("""INSERT INTO history.measurements (id, received_at, measured_at, serial_number, topic,
+                                                    current_ma, voltage_mv, payload) VALUES
+        (1, '2026-03-20 10:00+00', NULL, 'SN-9', 'traffic-nodes/101/measurements', 600, 12100, NULL),
+        (2, '2026-03-20 10:15+00', NULL, 'SN-9', 'traffic-nodes/101/measurements', NULL, NULL,
+            '{"current_mA": 610, "voltage_mV": 12050, "time": null}'),
+        (3, '2026-03-20 10:30+00', NULL, 'SN-9', 'traffic-nodes/101/measurements', -1.25, 5368709120, NULL),
+        (4, '2026-03-20 10:45+00', NULL, 'SN-9', 'traffic-nodes/101/measurements', NULL, NULL,
+            '{"current_mA": "kaputt"}')""")
+    try:
+        assert import_data.main(["history", "--source-dsn", db_url, "--check"]) == 0
+        out = capsys.readouterr().out
+        assert "=== Gerät 101 ===" in out and "Messwerte:  3" in out  # row 4 has no usable values
+        assert import_data.main(["history", "--source-dsn", db_url, "--database-url", db_url]) == 0
+        rows = db.execute("SELECT device_id, measured_at, current_ma, voltage_mv FROM measurements "
+                          "ORDER BY measured_at").fetchall()
+        assert [(r[0], r[1].strftime("%H:%M"), r[2], r[3]) for r in rows] == [
+            ("101", "10:00", 600.0, 12100.0), ("101", "10:15", 610.0, 12050.0)]  # 5368709120 skipped
+
+        # nothing usable anywhere -> explains which values are filled
+        db.execute("UPDATE history.measurements SET received_at = NULL")
+        db.execute("TRUNCATE measurements, devices, raw_messages")
+        with pytest.raises(SystemExit) as exc:
+            import_data.main(["history", "--source-dsn", db_url, "--table", "history.measurements", "--check"])
+        text = str(exc.value)
+        assert "gefüllte Werte" in text and "measured_at: 0" in text and "received_at: 0" in text
+        assert "payload.voltage_mV: 1" in text
+    finally:
+        db.execute("DROP SCHEMA history CASCADE")

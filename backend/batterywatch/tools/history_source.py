@@ -25,9 +25,16 @@ log = logging.getLogger("batterywatch.import")
 
 # candidate column names (lower case), best first
 TIME_NAMES = ["measured_at", "_time", "time", "timestamp", "ts", "datetime", "recorded_at", "created_at", "received_at"]
-DEVICE_NAMES = ["device_id", "deviceid", "device", "node_id", "node", "serial"]
+# if the chosen time column is empty in a row, use this one instead (e.g. measured_at -> received_at;
+# node 101 sends "time": null, so only the server's receive time exists)
+TIME_FALLBACK_NAMES = ["received_at", "created_at", "inserted_at"]
+# explicit device columns; if none exists, the id comes from the MQTT topic, then from a serial number
+DEVICE_NAMES = ["device_id", "deviceid", "device", "node_id", "node"]
+SERIAL_NAMES = ["serial_number", "serial"]
 CURRENT = {"current_ma": 1.0, "current_a": 1000.0, "i_ma": 1.0, "i_a": 1000.0, "current": None, "strom": None}
 VOLTAGE = {"voltage_mv": 1.0, "voltage_v": 1000.0, "u_mv": 1.0, "u_v": 1000.0, "voltage": None, "spannung": None}
+# JSON column with the original message; its keys follow the MQTT contract (mA / mV)
+PAYLOAD_NAMES = ["payload", "message", "body", "data"]
 OPTIONAL = {
     "latitude": ["latitude", "lat"],
     "longitude": ["longitude", "lon", "lng"],
@@ -40,6 +47,8 @@ OPTIONAL = {
 
 @dataclass
 class Mapping:
+    """Which column of the source table means what."""
+
     schema: str
     table: str
     time: str
@@ -48,16 +57,83 @@ class Mapping:
     current_factor: float | None  # multiply to get mA (None = decide from the data)
     voltage_factor: float | None  # multiply to get mV
     device: str | None = None
-    topic: str | None = None      # MQTT topic column, used for the device id if there is no device column
+    topic: str | None = None        # MQTT topic column -> device id if there is no device column
+    serial: str | None = None       # serial number column -> device id as last resort
+    time_fallback: str | None = None  # used where `time` is NULL
+    payload: str | None = None      # jsonb with the original message, used where current/voltage are NULL
     optional: dict[str, str] = field(default_factory=dict)
-    rows: int | None = None       # number of usable rows (filled in by auto_query)
+    rows: int | None = None         # number of usable rows (filled in by auto_query)
 
     def describe(self) -> str:
-        device = self.device or (f"from topic column {self.topic}" if self.topic else "(fixed)")
-        parts = [f"rows={self.rows}", f"time={self.time}", f"device={device}",
-                 f"current={self.current} x{self.current_factor}", f"voltage={self.voltage} x{self.voltage_factor}"]
+        if self.device:
+            device = self.device
+        elif self.topic:
+            device = f"from topic column {self.topic}" + (f" (else {self.serial})" if self.serial else "")
+        else:
+            device = self.serial or "(fixed)"
+        time = self.time + (f" (else {self.time_fallback})" if self.time_fallback else "")
+        extra = f" (else {self.payload} JSON)" if self.payload else ""
+        parts = [f"rows={self.rows}", f"time={time}", f"device={device}",
+                 f"current={self.current} x{self.current_factor}{extra}",
+                 f"voltage={self.voltage} x{self.voltage_factor}{extra}"]
         parts += [f"{k}={v}" for k, v in self.optional.items()]
         return f"{self.schema}.{self.table}: " + ", ".join(parts)
+
+    # --- SQL expressions (each falls back to the next source if NULL) ------
+    def time_sql(self) -> sql.Composable:
+        expr = sql.SQL("{}::timestamptz").format(sql.Identifier(self.time))
+        if self.time_fallback:
+            expr = sql.SQL("COALESCE({}, {}::timestamptz)").format(expr, sql.Identifier(self.time_fallback))
+        return expr
+
+    def _value_sql(self, column: str, factor: float | None, payload_key: str) -> sql.Composable:
+        expr = sql.SQL("{}::float8 * {}").format(sql.Identifier(column), sql.Literal(factor or 1.0))
+        if self.payload:
+            # only take JSON numbers, so a broken value can't make the whole query fail
+            p = sql.Identifier(self.payload)
+            expr = sql.SQL("COALESCE({e}, CASE WHEN jsonb_typeof({p}::jsonb -> {k}) = 'number' "
+                           "THEN ({p}::jsonb ->> {k})::float8 END)").format(e=expr, p=p, k=sql.Literal(payload_key))
+        return expr
+
+    def current_sql(self) -> sql.Composable:
+        return self._value_sql(self.current, self.current_factor, "current_mA")
+
+    def voltage_sql(self) -> sql.Composable:
+        return self._value_sql(self.voltage, self.voltage_factor, "voltage_mV")
+
+    def device_sql(self, device_id: str | None) -> sql.Composable:
+        if device_id:                       # given by hand (--device-id)
+            return sql.SQL("{}::text").format(sql.Literal(device_id))
+        if self.device:                     # a device column
+            return sql.SQL("{}::text").format(sql.Identifier(self.device))
+        parts = []
+        if self.topic:                      # traffic-nodes/<id>/measurements or traffic-device/<t>/<type>/<id>/status
+            t = sql.Identifier(self.topic)
+            parts.append(sql.SQL(
+                "NULLIF(CASE WHEN split_part({t}, '/', 1) = 'traffic-device' THEN split_part({t}, '/', 4) "
+                "ELSE split_part({t}, '/', 2) END, '')").format(t=t))
+        if self.serial:
+            parts.append(sql.SQL("{}::text").format(sql.Identifier(self.serial)))
+        parts.append(sql.SQL("'unknown'::text"))
+        return sql.SQL("COALESCE({})").format(sql.SQL(", ").join(parts))
+
+    def usable_rows_sql(self) -> sql.Composable:
+        return sql.SQL("SELECT count(*) FROM {}.{} WHERE {} IS NOT NULL AND {} IS NOT NULL AND {} IS NOT NULL").format(
+            sql.Identifier(self.schema), sql.Identifier(self.table),
+            self.time_sql(), self.current_sql(), self.voltage_sql())
+
+    def fill_report_sql(self) -> tuple[sql.Composable, list[str]]:
+        """How many rows have each source filled - explains 0 usable rows."""
+        checks = [(c, sql.SQL("count({})").format(sql.Identifier(c)))
+                  for c in [self.time, self.time_fallback, self.current, self.voltage] if c]
+        if self.payload:
+            p = sql.Identifier(self.payload)
+            for key in ("current_mA", "voltage_mV"):
+                checks.append((f"{self.payload}.{key}", sql.SQL(
+                    "count(*) FILTER (WHERE jsonb_typeof({}::jsonb -> {}) = 'number')").format(p, sql.Literal(key))))
+        query = sql.SQL("SELECT count(*), {} FROM {}.{}").format(
+            sql.SQL(", ").join(expr for _, expr in checks), sql.Identifier(self.schema), sql.Identifier(self.table))
+        return query, ["alle Zeilen"] + [name for name, _ in checks]
 
 
 def list_tables(conn: psycopg.Connection) -> dict[tuple[str, str], list[tuple[str, str]]]:
@@ -88,6 +164,8 @@ def describe(conn: psycopg.Connection) -> str:
     return "\n".join(lines) or "(no tables visible for this user)"
 
 
+
+
 def _pick(columns: dict[str, str], names) -> str | None:
     for name in names:
         if name in columns:
@@ -108,6 +186,7 @@ def candidates(tables: dict[tuple[str, str], list[tuple[str, str]]], table: str 
         if table and table not in (tname, f"{schema}.{tname}"):
             continue
         by_lower = {c.lower(): c for c, _ in cols}
+        types = {c.lower(): t for c, t in cols}
         time_col = _pick(by_lower, TIME_NAMES)
         cur = next(((by_lower[n], f) for n, f in CURRENT.items() if n in by_lower), None)
         volt = next(((by_lower[n], f) for n, f in VOLTAGE.items() if n in by_lower), None)
@@ -116,11 +195,15 @@ def candidates(tables: dict[tuple[str, str], list[tuple[str, str]]], table: str 
         m = Mapping(schema, tname, time_col, cur[0], volt[0], cur[1], volt[1], device=_pick(by_lower, DEVICE_NAMES))
         if not m.device:
             m.topic = by_lower.get("topic")
+            m.serial = _pick(by_lower, SERIAL_NAMES)
+        m.time_fallback = next((by_lower[n] for n in TIME_FALLBACK_NAMES
+                                if n in by_lower and by_lower[n] != time_col), None)
+        m.payload = next((by_lower[n] for n in PAYLOAD_NAMES if types.get(n) in ("jsonb", "json")), None)
         for target, names in OPTIONAL.items():
             col = _pick(by_lower, names)
             if col:
                 m.optional[target] = col
-        score = 10 + (5 if m.device else 4 if m.topic else 0) + len(m.optional)
+        score = 10 + (5 if m.device else 4 if m.topic else 3 if m.serial else 0) + len(m.optional)
         scored.append((score, m))
     scored.sort(key=lambda sm: -sm[0])  # stable: equal scores keep database order
     return [m for _, m in scored]
@@ -152,31 +235,22 @@ def _resolve_units(conn: psycopg.Connection, m: Mapping) -> None:
 
 
 def build_query(m: Mapping, device_id: str | None) -> sql.Composed:
-    def col(name: str) -> sql.Identifier:
-        return sql.Identifier(name)
-
-    if device_id:                       # given by hand (--device-id)
-        device = sql.SQL("{}::text").format(sql.Literal(device_id))
-    elif m.device:                      # a device column
-        device = sql.SQL("{}::text").format(col(m.device))
-    elif m.topic:                       # from the MQTT topic: traffic-nodes/<id>/measurements
-        device = sql.SQL(                # or traffic-device/<tenant>/<type>/<id>/status
-            "CASE WHEN split_part({t}, '/', 1) = 'traffic-device' THEN split_part({t}, '/', 4) "
-            "ELSE split_part({t}, '/', 2) END").format(t=col(m.topic))
-    else:
-        device = sql.SQL("'unknown'::text")
+    """SELECT returning the columns import_data expects (device_id, measured_at, current_ma, ...)."""
     fields = [
-        sql.SQL("{} AS device_id").format(device),
-        sql.SQL("{}::timestamptz AS measured_at").format(col(m.time)),
-        sql.SQL("{}::float8 * {} AS current_ma").format(col(m.current), sql.Literal(m.current_factor)),
-        sql.SQL("{}::float8 * {} AS voltage_mv").format(col(m.voltage), sql.Literal(m.voltage_factor)),
+        sql.SQL("{} AS device_id").format(m.device_sql(device_id)),
+        sql.SQL("{} AS measured_at").format(m.time_sql()),
+        sql.SQL("{} AS current_ma").format(m.current_sql()),
+        sql.SQL("{} AS voltage_mv").format(m.voltage_sql()),
     ]
     casts = {"latitude": "float8", "longitude": "float8", "altitude_m": "float8", "satellites": "int",
              "tenant": "text", "device_type": "text"}
     for target, source in m.optional.items():
-        fields.append(sql.SQL("{}::{} AS {}").format(col(source), sql.SQL(casts[target]), col(target)))
-    return sql.SQL("SELECT {} FROM {}.{} WHERE {} IS NOT NULL AND {} IS NOT NULL AND {} IS NOT NULL ORDER BY 2").format(
-        sql.SQL(", ").join(fields), col(m.schema), col(m.table), col(m.time), col(m.current), col(m.voltage))
+        fields.append(sql.SQL("{}::{} AS {}").format(sql.Identifier(source), sql.SQL(casts[target]),
+                                                     sql.Identifier(target)))
+    return sql.SQL("SELECT * FROM (SELECT {} FROM {}.{}) q "
+                   "WHERE measured_at IS NOT NULL AND current_ma IS NOT NULL AND voltage_mv IS NOT NULL "
+                   "ORDER BY measured_at").format(
+        sql.SQL(", ").join(fields), sql.Identifier(m.schema), sql.Identifier(m.table))
 
 
 def auto_query(dsn: str, table: str | None, device_id: str | None) -> str:
@@ -184,23 +258,27 @@ def auto_query(dsn: str, table: str | None, device_id: str | None) -> str:
     with psycopg.connect(dsn) as conn:
         conn.execute("SET TIME ZONE 'UTC'")  # timestamps without zone are UTC
         found = candidates(list_tables(conn), table)
-        # Several tables may fit by name (e.g. an empty template table). Count the
-        # usable rows of each and take the best fit that actually contains data.
+        # Several tables may fit by name. Count the usable rows of each (with all
+        # fallbacks) and take the best fit that actually contains data.
         for c in found:
-            c.rows = conn.execute(sql.SQL(
-                "SELECT count(*) FROM {}.{} WHERE {} IS NOT NULL AND {} IS NOT NULL AND {} IS NOT NULL").format(
-                sql.Identifier(c.schema), sql.Identifier(c.table), sql.Identifier(c.time),
-                sql.Identifier(c.current), sql.Identifier(c.voltage))).fetchone()[0]
+            c.rows = conn.execute(c.usable_rows_sql()).fetchone()[0]
             log.info("candidate table %s.%s: %d usable rows", c.schema, c.table, c.rows)
         m = next((c for c in found if c.rows), None)
         if m is None:
-            reason = ("Keine Tabelle mit Zeit-, Strom- und Spannungsspalten gefunden." if not found else
-                      "Die passenden Tabellen sind alle LEER (0 Zeilen).")
+            if not found:
+                reason = "Keine Tabelle mit Zeit-, Strom- und Spannungsspalten gefunden."
+            else:
+                reason = "In den passenden Tabellen hat keine Zeile Zeit + Strom + Spannung gleichzeitig.\n"
+                for c in found:
+                    query, names = c.fill_report_sql()
+                    counts = conn.execute(query).fetchone()
+                    reason += f"\n{c.schema}.{c.table} - gefüllte Werte:\n" + "\n".join(
+                        f"    {n}: {v}" for n, v in zip(names, counts))
             raise SystemExit(
-                f"\n{reason}\nSo sieht die Datenbank aus (Tabellen, Zeilenzahl, Spalten):\n\n" + describe(conn) +
+                f"\n{reason}\n\nSo sieht die Datenbank aus (Tabellen, Zeilenzahl, Spalten):\n\n" + describe(conn) +
                 "\n\n-> Bitte diese Ausgabe an Claude/das Team schicken, dann wird die Zuordnung angepasst."
             )
-        if not m.device and not m.topic and not device_id:
+        if not (m.device or m.topic or m.serial or device_id):
             log.warning("no device column found, storing everything as device 'unknown' (use --device-id)")
         _resolve_units(conn, m)
         log.info("using %s", m.describe())
