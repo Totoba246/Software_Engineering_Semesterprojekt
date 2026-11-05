@@ -231,3 +231,27 @@ def test_import_history_detects_columns_and_units(db_url, db):
     assert rows[0][4] == 48.2
     assert rows[2][:1] == ("OLD-1",) and rows[2][2:4] == (600.0, 11800.0)  # unit guessed from values
     assert db.execute("SELECT tenant FROM devices WHERE device_id='TSN-002'").fetchone()[0] == "dieringer-stark"
+
+
+def test_import_history_check_limits_and_time_window(db_url, db, capsys):
+    db.execute("DROP SCHEMA IF EXISTS src CASCADE")
+    db.execute("CREATE SCHEMA src")
+    db.execute('CREATE TABLE src.node (ts timestamptz, device_id text, current_ma float8, voltage_mv float8)')
+    db.execute("INSERT INTO src.node VALUES "
+               "('2026-03-20 10:00+00', '101', 600, 12100), ('2026-03-20 10:15+00', '101', 610, 12090), "
+               "('2026-03-20 10:30+00', '101', -1.25, 5368709120), ('2026-03-20 10:45+00', '101', -1.25, 5368709120)")
+    base = ["history", "--source-dsn", db_url, "--table", "src.node", "--database-url", db_url]
+    try:
+        # --check: report only, nothing imported
+        assert import_data.main(base + ["--check"]) == 0
+        out = capsys.readouterr().out
+        assert "Letzter plausibler Messwert: 20.03.2026 11:15" in out  # German time
+        assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 0
+        # --to: only up to the given time
+        assert import_data.main(base + ["--to", "2026-03-20T10:00:00+00:00"]) == 0
+        assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 1
+        # full import: the read errors (5368709120 mV) are skipped, like in the collector
+        assert import_data.main(base) == 0
+        assert db.execute("SELECT count(*), max(voltage_mv) FROM measurements").fetchone() == (2, 12100.0)
+    finally:
+        db.execute("DROP SCHEMA src CASCADE")

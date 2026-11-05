@@ -28,8 +28,16 @@ eigenes Passwort für unsere Datenbank, schreibt alles in `.env` und startet die
 
 ```bash
 ./deploy/import-history.sh --inspect   # zeigt nur, welche Tabellen/Spalten es gibt
+./deploy/import-history.sh --check     # Plausibilitätsprüfung, importiert NICHTS
 ./deploy/import-history.sh             # übernimmt die Daten
+./deploy/import-history.sh --to 2026-03-29T00:16:57+00:00   # nur bis zu diesem Zeitpunkt
 ```
+
+`--check` zeigt je Gerät eine Tabelle pro Tag (Anzahl Werte, Anteil plausibel, Spannung
+min/typisch/max, Strom), erkannte Akkuwechsel/Entladezyklen, Lücken, „hängende“ Werte und
+**ab wann keine plausiblen Messwerte mehr kommen** – inklusive eines Vorschlags für `--to`.
+Plausibel = 9–15 V und 0–5 A. Werte ≤ 0 V oder > 60 V (z. B. 5 368 709 120 mV) werden beim
+Import immer verworfen, genau wie beim Live-Empfang.
 
 Gefragt wird nach dem **Passwort der Kurs-Datenbank**. Das Tool erkennt Zeit-, Geräte-, Strom- und
 Spannungsspalten und die Einheiten (V/mV, A/mA) selbst. Mehrfaches Ausführen ist unschädlich

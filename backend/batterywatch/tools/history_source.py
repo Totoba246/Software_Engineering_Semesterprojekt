@@ -115,19 +115,28 @@ def guess_mapping(tables: dict[tuple[str, str], list[tuple[str, str]]], table: s
 
 
 def _resolve_units(conn: psycopg.Connection, m: Mapping) -> None:
-    """For columns without a unit in the name, decide from typical values."""
+    """For columns without a unit in the name, decide from typical values.
+
+    Counts how many values look like volts (5-20) vs millivolts (5000-20000)
+    and amperes (0.05-5) vs milliamperes (50-5000). Counting instead of taking
+    the median keeps the decision right even if many values are garbage
+    (e.g. 5368709120).
+    """
     if m.current_factor is not None and m.voltage_factor is not None:
         return
-    q = sql.SQL("SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY abs({c}::float8)), "
-                "percentile_cont(0.5) WITHIN GROUP (ORDER BY {v}::float8) FROM {s}.{t} WHERE {v}::float8 > 0").format(
-        c=sql.Identifier(m.current), v=sql.Identifier(m.voltage), s=sql.Identifier(m.schema), t=sql.Identifier(m.table))
-    med_current, med_voltage = conn.execute(q).fetchone()
+    q = sql.SQL(
+        "SELECT count(*) FILTER (WHERE {v}::float8 BETWEEN 5 AND 20), "
+        "       count(*) FILTER (WHERE {v}::float8 BETWEEN 5000 AND 20000), "
+        "       count(*) FILTER (WHERE abs({c}::float8) BETWEEN 0.05 AND 5), "
+        "       count(*) FILTER (WHERE abs({c}::float8) BETWEEN 50 AND 5000) "
+        "FROM {s}.{t}"
+    ).format(c=sql.Identifier(m.current), v=sql.Identifier(m.voltage), s=sql.Identifier(m.schema),
+             t=sql.Identifier(m.table))
+    volts, millivolts, amps, milliamps = conn.execute(q).fetchone()
     if m.voltage_factor is None:
-        # a 12 V battery: ~11-13 in volts, ~11000-13000 in millivolts
-        m.voltage_factor = 1.0 if (med_voltage or 0) > 100 else 1000.0
+        m.voltage_factor = 1000.0 if volts > millivolts else 1.0  # volts -> x1000 to get mV
     if m.current_factor is None:
-        # the node draws ~0.5-0.7 A: < 20 means amperes
-        m.current_factor = 1.0 if (med_current or 0) > 20 else 1000.0
+        m.current_factor = 1000.0 if amps > milliamps else 1.0
 
 
 def build_query(m: Mapping, device_id: str | None) -> sql.Composed:

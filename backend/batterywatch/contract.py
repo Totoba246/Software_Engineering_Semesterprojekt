@@ -37,6 +37,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 # matches traffic-nodes/101/measurements, traffic-nodes/102/measurements, ...
 DEFAULT_TOPICS = "traffic-nodes/+/measurements,traffic-device/+/+/+/status"
 DEFAULT_DEVICE_TYPE = "trafficnode"
+# Hard limits for a message to be accepted at all (in mV / mA, like the nodes send).
+# Used by the payload check below AND by the import tool, so both apply the same rule.
+VOLTAGE_MV_MAX = 60_000      # 60 V; above that it's a read error (node 101: 5368709120 mV)
+CURRENT_MA_LIMIT = 100_000   # +-100 A
+
 # Allowed characters in ids taken from the topic: letters, digits, _ . -  (max. 64)
 _ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
@@ -86,12 +91,12 @@ class TelemetryPayload(BaseModel):
     model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
 
     # Current in MILLIamperes (the traffic light draws about 500-700 mA).
-    current_mA: float = Field(ge=-100_000, le=100_000)
+    current_mA: float = Field(ge=-CURRENT_MA_LIMIT, le=CURRENT_MA_LIMIT)
     # Voltage in MILLIvolts, measured behind the shunt (a 12 V battery = about 12000 mV).
     # 0 mV is what an unconfigured node sends (see docs/samples/sample_msg.json).
     # The node is powered by the battery it measures, so 0 V cannot be real.
     # Above 60 V is a read error (seen live: 5368709120 mV = 1.25 * 2^32 from node 101).
-    voltage_mV: float = Field(gt=0, le=60_000)
+    voltage_mV: float = Field(gt=0, le=VOLTAGE_MV_MAX)
     # GPS position (null when the node has no satellite fix)
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
@@ -161,6 +166,12 @@ def _describe(err: dict) -> str:
     if err["type"] == "missing" or "input" not in err or isinstance(err["input"], dict):
         return f"{field} {text}"
     return f"{field} = {show(err['input'])!r} {text}"
+
+
+def within_limits(voltage_mv: float, current_ma: float) -> bool:
+    """Same voltage/current rule as the payload check, for data that doesn't
+    arrive via MQTT (imports). Also rejects NaN (NaN fails every comparison)."""
+    return 0 < voltage_mv <= VOLTAGE_MV_MAX and -CURRENT_MA_LIMIT <= current_ma <= CURRENT_MA_LIMIT
 
 
 def parse_message(topic: str, payload: bytes | str, received_at: datetime | None = None) -> Measurement:

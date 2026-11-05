@@ -19,6 +19,8 @@
 #
 #   ./deploy/import-history.sh                  # detect table/columns automatically and import
 #   ./deploy/import-history.sh --inspect        # only show which tables/columns exist
+#   ./deploy/import-history.sh --check          # plausibility report: from when on is the data garbage?
+#   ./deploy/import-history.sh --to <time>      # import only up to that time (see --check)
 #   ./deploy/import-history.sh --table <name>   # pick the table explicitly
 #   ./deploy/import-history.sh --shift-to-now   # move the data so it ends today (demo)
 #
