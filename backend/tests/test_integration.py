@@ -255,3 +255,28 @@ def test_import_history_check_limits_and_time_window(db_url, db, capsys):
         assert db.execute("SELECT count(*), max(voltage_mv) FROM measurements").fetchone() == (2, 12100.0)
     finally:
         db.execute("DROP SCHEMA src CASCADE")
+
+
+def test_import_history_skips_empty_tables_and_reads_device_from_topic(db_url, db, capsys):
+    # like the course database: an empty table that fits by name ...
+    db.execute("DROP SCHEMA IF EXISTS src CASCADE")
+    db.execute("CREATE SCHEMA src")
+    db.execute("CREATE TABLE src.measurements (measured_at timestamptz, current_ma float8, voltage_mv float8, "
+               "lat float8, lon float8, altitude_m float8, satellites int)")
+    # ... and the table that really holds the data, device only in the MQTT topic
+    db.execute("CREATE TABLE src.nodedata (measured_at timestamptz, topic text, current_ma float8, voltage_mv float8)")
+    db.execute("INSERT INTO src.nodedata VALUES "
+               "('2026-03-20 10:00+00', 'traffic-nodes/101/measurements', 600, 12100), "
+               "('2026-03-20 10:15+00', 'traffic-device/acme/trafficnode/TSN-7/status', 610, 12000)")
+    try:
+        assert import_data.main(["history", "--source-dsn", db_url, "--database-url", db_url]) == 0
+        rows = db.execute("SELECT device_id, voltage_mv FROM measurements ORDER BY measured_at").fetchall()
+        assert rows == [("101", 12100.0), ("TSN-7", 12000.0)]
+        # when every fitting table is empty, the layout is printed instead
+        db.execute("TRUNCATE src.nodedata")
+        db.execute("TRUNCATE measurements, devices, raw_messages")
+        with pytest.raises(SystemExit) as exc:
+            import_data.main(["history", "--source-dsn", db_url, "--check"])
+        assert "alle LEER" in str(exc.value) and "src.nodedata  (0 rows)" in str(exc.value)
+    finally:
+        db.execute("DROP SCHEMA src CASCADE")

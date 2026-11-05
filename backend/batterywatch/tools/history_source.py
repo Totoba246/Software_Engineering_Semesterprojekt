@@ -48,10 +48,13 @@ class Mapping:
     current_factor: float | None  # multiply to get mA (None = decide from the data)
     voltage_factor: float | None  # multiply to get mV
     device: str | None = None
+    topic: str | None = None      # MQTT topic column, used for the device id if there is no device column
     optional: dict[str, str] = field(default_factory=dict)
+    rows: int | None = None       # number of usable rows (filled in by auto_query)
 
     def describe(self) -> str:
-        parts = [f"time={self.time}", f"device={self.device or '(fixed)'}",
+        device = self.device or (f"from topic column {self.topic}" if self.topic else "(fixed)")
+        parts = [f"rows={self.rows}", f"time={self.time}", f"device={device}",
                  f"current={self.current} x{self.current_factor}", f"voltage={self.voltage} x{self.voltage_factor}"]
         parts += [f"{k}={v}" for k, v in self.optional.items()]
         return f"{self.schema}.{self.table}: " + ", ".join(parts)
@@ -93,7 +96,14 @@ def _pick(columns: dict[str, str], names) -> str | None:
 
 
 def guess_mapping(tables: dict[tuple[str, str], list[tuple[str, str]]], table: str | None = None) -> Mapping | None:
-    best: tuple[int, Mapping] | None = None
+    """The best-fitting table by column names alone (see ``candidates``)."""
+    found = candidates(tables, table)
+    return found[0] if found else None
+
+
+def candidates(tables: dict[tuple[str, str], list[tuple[str, str]]], table: str | None = None) -> list[Mapping]:
+    """All tables that have time, current and voltage columns, best fit first."""
+    scored: list[tuple[int, Mapping]] = []
     for (schema, tname), cols in tables.items():
         if table and table not in (tname, f"{schema}.{tname}"):
             continue
@@ -104,14 +114,16 @@ def guess_mapping(tables: dict[tuple[str, str], list[tuple[str, str]]], table: s
         if not (time_col and cur and volt):
             continue
         m = Mapping(schema, tname, time_col, cur[0], volt[0], cur[1], volt[1], device=_pick(by_lower, DEVICE_NAMES))
+        if not m.device:
+            m.topic = by_lower.get("topic")
         for target, names in OPTIONAL.items():
             col = _pick(by_lower, names)
             if col:
                 m.optional[target] = col
-        score = 10 + (5 if m.device else 0) + len(m.optional)
-        if best is None or score > best[0]:
-            best = (score, m)
-    return best[1] if best else None
+        score = 10 + (5 if m.device else 4 if m.topic else 0) + len(m.optional)
+        scored.append((score, m))
+    scored.sort(key=lambda sm: -sm[0])  # stable: equal scores keep database order
+    return [m for _, m in scored]
 
 
 def _resolve_units(conn: psycopg.Connection, m: Mapping) -> None:
@@ -143,9 +155,18 @@ def build_query(m: Mapping, device_id: str | None) -> sql.Composed:
     def col(name: str) -> sql.Identifier:
         return sql.Identifier(name)
 
+    if device_id:                       # given by hand (--device-id)
+        device = sql.SQL("{}::text").format(sql.Literal(device_id))
+    elif m.device:                      # a device column
+        device = sql.SQL("{}::text").format(col(m.device))
+    elif m.topic:                       # from the MQTT topic: traffic-nodes/<id>/measurements
+        device = sql.SQL(                # or traffic-device/<tenant>/<type>/<id>/status
+            "CASE WHEN split_part({t}, '/', 1) = 'traffic-device' THEN split_part({t}, '/', 4) "
+            "ELSE split_part({t}, '/', 2) END").format(t=col(m.topic))
+    else:
+        device = sql.SQL("'unknown'::text")
     fields = [
-        sql.SQL("{}::text AS device_id").format(col(m.device)) if m.device and not device_id
-        else sql.SQL("{}::text AS device_id").format(sql.Literal(device_id or "unknown")),
+        sql.SQL("{} AS device_id").format(device),
         sql.SQL("{}::timestamptz AS measured_at").format(col(m.time)),
         sql.SQL("{}::float8 * {} AS current_ma").format(col(m.current), sql.Literal(m.current_factor)),
         sql.SQL("{}::float8 * {} AS voltage_mv").format(col(m.voltage), sql.Literal(m.voltage_factor)),
@@ -162,14 +183,24 @@ def auto_query(dsn: str, table: str | None, device_id: str | None) -> str:
     """Return a ready SQL query for ``import_data sql``, or raise SystemExit with the layout."""
     with psycopg.connect(dsn) as conn:
         conn.execute("SET TIME ZONE 'UTC'")  # timestamps without zone are UTC
-        m = guess_mapping(list_tables(conn), table)
+        found = candidates(list_tables(conn), table)
+        # Several tables may fit by name (e.g. an empty template table). Count the
+        # usable rows of each and take the best fit that actually contains data.
+        for c in found:
+            c.rows = conn.execute(sql.SQL(
+                "SELECT count(*) FROM {}.{} WHERE {} IS NOT NULL AND {} IS NOT NULL AND {} IS NOT NULL").format(
+                sql.Identifier(c.schema), sql.Identifier(c.table), sql.Identifier(c.time),
+                sql.Identifier(c.current), sql.Identifier(c.voltage))).fetchone()[0]
+            log.info("candidate table %s.%s: %d usable rows", c.schema, c.table, c.rows)
+        m = next((c for c in found if c.rows), None)
         if m is None:
+            reason = ("Keine Tabelle mit Zeit-, Strom- und Spannungsspalten gefunden." if not found else
+                      "Die passenden Tabellen sind alle LEER (0 Zeilen).")
             raise SystemExit(
-                "Could not find a table with time, current and voltage columns.\n"
-                "Database layout:\n" + describe(conn) +
-                "\n\nUse `import_data sql --query ...` with explicit column aliases (see docs/Entwicklung.md)."
+                f"\n{reason}\nSo sieht die Datenbank aus (Tabellen, Zeilenzahl, Spalten):\n\n" + describe(conn) +
+                "\n\n-> Bitte diese Ausgabe an Claude/das Team schicken, dann wird die Zuordnung angepasst."
             )
-        if not m.device and not device_id:
+        if not m.device and not m.topic and not device_id:
             log.warning("no device column found, storing everything as device 'unknown' (use --device-id)")
         _resolve_units(conn, m)
         log.info("using %s", m.describe())
