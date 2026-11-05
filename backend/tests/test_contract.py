@@ -5,7 +5,8 @@ import pytest
 
 from batterywatch.contract import ContractError, build_payload, build_topic, parse_message, parse_topic
 
-TOPIC = "traffic-device/dieringer-stark/trafficnode/TSN-002/status"
+TOPIC = "traffic-nodes/101/measurements"
+LEGACY_TOPIC = "traffic-device/dieringer-stark/trafficnode/TSN-002/status"
 RECEIVED = datetime(2026, 3, 19, 9, 0, tzinfo=timezone.utc)
 
 
@@ -17,6 +18,7 @@ def payload(**overrides):
         "lon": 8.649726,
         "altitude_m": 609.6,
         "satellites": 7,
+        "temperature_C": 16.94,
         "time": "2026-03-19T08:50:50Z",
     }
     data.update(overrides)
@@ -25,10 +27,25 @@ def payload(**overrides):
 
 def test_valid_message():
     m = parse_message(TOPIC, payload(), RECEIVED)
-    assert (m.tenant, m.device_type, m.device_id) == ("dieringer-stark", "trafficnode", "TSN-002")
-    assert m.current_ma == 551.0 and m.voltage_mv == 11276.0
+    assert (m.tenant, m.device_type, m.device_id) == (None, "trafficnode", "101")
+    assert m.current_ma == 551.0 and m.voltage_mv == 11276.0 and m.temperature_c == 16.94
     assert m.latitude == 48.201157 and m.satellites == 7
     assert m.measured_at == datetime(2026, 3, 19, 8, 50, 50, tzinfo=timezone.utc)
+
+
+def test_legacy_topic_layout_still_accepted():
+    m = parse_message(LEGACY_TOPIC, payload(), RECEIVED)
+    assert (m.tenant, m.device_type, m.device_id) == ("dieringer-stark", "trafficnode", "TSN-002")
+
+
+def test_live_read_error_of_node_101_is_rejected():
+    # message seen on mqtt.ti-labs.ai on 2026-11-05 (voltage = 1.25 * 2^32)
+    raw = ('{"current_mA":-1.25,"voltage_mV":5368709120.00,"temperature_C":17,"lat":null,"lon":null,'
+           '"altitude_m":null,"satellites":null,"time":null}')
+    assert parse_topic(TOPIC).device_id == "101"
+    with pytest.raises(ContractError) as exc:
+        parse_message(TOPIC, raw, RECEIVED)
+    assert str(exc.value) == "voltage_mV = 5368709120 ist größer als erlaubt (max. 60000)"
 
 
 def test_missing_time_uses_receive_time():
@@ -73,13 +90,13 @@ def test_sample_message_from_docs_is_rejected():
 @pytest.mark.parametrize(
     "raw, match",
     [
-        ("{not json", "not valid JSON"),
-        ("[1, 2]", "JSON object"),
+        ("{not json", "kein gültiges JSON"),
+        ("[1, 2]", "JSON-Objekt"),
         (json.dumps({"current_mA": 500}), "voltage_mV"),
         (payload(current_mA="viel"), "current_mA"),
         (payload(voltage_mV=float("nan")), "voltage_mV"),
         (payload(voltage_mV=-5), "voltage_mV"),
-        (payload(lat=48.2, lon=None), "lat and lon"),
+        (payload(lat=48.2, lon=None), "lat und lon"),
         (payload(lat=123.0), "lat"),
         (payload(time="gestern"), "time"),
     ],
@@ -94,6 +111,9 @@ def test_invalid_payloads_are_rejected(raw, match):
     [
         "traffic-device/dieringer-stark/trafficnode/TSN-002",
         "other/dieringer-stark/trafficnode/TSN-002/status",
+        "traffic-nodes/101",
+        "traffic-nodes/101/status",
+        "traffic-nodes/1 01/measurements",
         "traffic-device/dieringer-stark/trafficnode/TSN 002/status",
         "traffic-device/a/b/c/d/status",
     ],
@@ -105,8 +125,9 @@ def test_invalid_topics_are_rejected(topic):
 
 def test_build_payload_round_trip():
     at = datetime(2026, 3, 19, 8, 50, 50, tzinfo=timezone.utc)
-    topic = build_topic("demo", "trafficnode", "SIM-001")
-    raw = build_payload(630.123, 11850.456, at, 48.1, 8.6, 600.0, 9)
+    topic = build_topic("SIM-001")
+    assert topic == "traffic-nodes/SIM-001/measurements"
+    raw = build_payload(630.123, 11850.456, at, 48.1, 8.6, 600.0, 9, 17.0)
     assert '"time": "2026-03-19T08:50:50Z"' in raw
     m = parse_message(topic, raw, RECEIVED)
     assert m.device_id == "SIM-001" and m.measured_at == at and m.current_ma == 630.12

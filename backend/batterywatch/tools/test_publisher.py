@@ -1,11 +1,13 @@
 """Test publisher (A05): sends TrafficNode-like messages to the MQTT broker.
 
-The real nodes are currently not sending, so this script stands in for them and
-lets us test the complete path  publisher -> broker -> collector -> DB -> API -> UI.
+Stands in for real nodes (only node 101 is sending at the moment) and lets us test
+the complete path  publisher -> broker -> collector -> DB -> API -> UI.
+Topic: traffic-nodes/<device_id>/measurements, like the live broker.
+Only use it against our own broker, never against the shared live broker.
 
 Modes::
 
-    # simulate 6 nodes; first publish 3 days of history, then one message per node every 10 s
+    # simulate 6 nodes; first publish 3 days of history (every 15 min), then one message per node every 10 s
     python -m batterywatch.tools.test_publisher simulate --devices 6 --backfill-hours 72 --interval 10
 
     # 30 days of history written directly into the DB ($DATABASE_URL), then live over MQTT
@@ -15,7 +17,7 @@ Modes::
     python -m batterywatch.tools.test_publisher simulate --once
 
     # also send every 20th message deliberately broken (tests the rejection path)
-    python -m batterywatch.tools.test_publisher simulate --invalid-every 20
+    python -m batterywatch.tools.test_publisher --invalid-every 20 simulate
 
     # replay the recorded sample data over MQTT (as fast as possible, moved to "now")
     python -m batterywatch.tools.test_publisher replay ../docs/samples/traffic_devices_signals.csv --shift-to-now
@@ -29,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import random
 import ssl
 import sys
@@ -76,7 +79,6 @@ class SimulatedNode:
     """
 
     device_id: str
-    tenant: str
     lat: float
     lon: float
     altitude_m: float
@@ -114,10 +116,12 @@ class SimulatedNode:
             "lon": round(self.lon, 6),
             "altitude_m": self.altitude_m,
             "satellites": rng.randint(6, 12),
+            # daily temperature cycle, warmest around 15:00
+            "temperature_c": 12 + 6 * math.sin((hour - 9) / 24 * 2 * math.pi) + rng.gauss(0, 0.3),
         }
 
 
-def make_nodes(count: int, tenant: str, seed: int, anchor: datetime) -> list[SimulatedNode]:
+def make_nodes(count: int, seed: int, anchor: datetime) -> list[SimulatedNode]:
     rng = random.Random(seed)
     nodes = []
     for i in range(count):
@@ -125,7 +129,6 @@ def make_nodes(count: int, tenant: str, seed: int, anchor: datetime) -> list[Sim
         nodes.append(
             SimulatedNode(
                 device_id=f"SIM-{i + 1:03d}",
-                tenant=tenant,
                 lat=lat + rng.uniform(-0.01, 0.01),
                 lon=lon + rng.uniform(-0.015, 0.015),
                 altitude_m=round(rng.uniform(550, 750), 1),
@@ -188,11 +191,14 @@ class Publisher:
 
     def _break(self, payload: str) -> str:
         data = json.loads(payload)
-        kind = self.invalid % 3
+        kind = self.invalid % 4
         if kind == 0:
             data.pop("voltage_mV")  # required field missing
         elif kind == 1:
             data["current_mA"] = "viel"  # wrong type
+        elif kind == 2:
+            # read error seen live from node 101 (1.25 * 2^32)
+            data.update(current_mA=-1.25, voltage_mV=5368709120.0)
         else:
             return "{not json"
         return json.dumps(data)
@@ -208,15 +214,16 @@ class Publisher:
 def run_simulate(args, pub: Publisher) -> None:
     rng = random.Random(args.seed)
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    nodes = make_nodes(args.devices, args.tenant, args.seed, anchor=now)
+    nodes = make_nodes(args.devices, args.seed, anchor=now)
 
     def publish_all(at: datetime) -> None:
         for node in nodes:
             s = node.sample(at, rng)
             payload = build_payload(
-                s["current_ma"], s["voltage_mv"], at, s["lat"], s["lon"], s["altitude_m"], s["satellites"]
+                s["current_ma"], s["voltage_mv"], at, s["lat"], s["lon"], s["altitude_m"], s["satellites"],
+                s["temperature_c"],
             )
-            pub.send(build_topic(node.tenant, "trafficnode", node.device_id), payload)
+            pub.send(build_topic(node.device_id), payload)
 
     if args.backfill_hours:
         steps = int(args.backfill_hours * 3600 // args.step)
@@ -250,9 +257,10 @@ def backfill_into_database(nodes: list[SimulatedNode], times: list[datetime], rn
             for node in nodes:
                 s = node.sample(at, rng)
                 yield Measurement(
-                    device_id=node.device_id, tenant=node.tenant, device_type="trafficnode", measured_at=at,
+                    device_id=node.device_id, tenant=None, device_type="trafficnode", measured_at=at,
                     current_ma=round(s["current_ma"], 2), voltage_mv=round(s["voltage_mv"], 2),
                     latitude=s["lat"], longitude=s["lon"], altitude_m=s["altitude_m"], satellites=s["satellites"],
+                    temperature_c=round(s["temperature_c"], 2),
                 )
 
     inserted = store.save_many(rows(), source="import")
@@ -273,7 +281,7 @@ def run_replay(args, pub: Publisher) -> None:
         payload = build_payload(
             m.current_ma, m.voltage_mv, m.measured_at, m.latitude, m.longitude, m.altitude_m, m.satellites
         )
-        pub.send(build_topic(m.tenant, m.device_type, m.device_id), payload)
+        pub.send(build_topic(m.device_id), payload)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -288,10 +296,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p_sim = sub.add_parser("simulate", help="simulated nodes with a simple battery model")
     p_sim.add_argument("--devices", type=int, default=6)
-    p_sim.add_argument("--tenant", default="demo")
-    p_sim.add_argument("--interval", type=float, default=180, help="seconds between live messages (real nodes: 180)")
+    p_sim.add_argument("--interval", type=float, default=900, help="seconds between live messages (node 101: 900)")
     p_sim.add_argument("--backfill-hours", type=float, default=0, help="first publish this much history")
-    p_sim.add_argument("--step", type=int, default=180, help="seconds between backfilled messages")
+    p_sim.add_argument("--step", type=int, default=900, help="seconds between backfilled messages")
     p_sim.add_argument(
         "--backfill-direct", action="store_true",
         help="write the backfill directly into $DATABASE_URL instead of publishing it (fast, for long histories)",

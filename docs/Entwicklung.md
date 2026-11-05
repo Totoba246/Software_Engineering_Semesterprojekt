@@ -48,7 +48,9 @@ python -m batterywatch.tools.test_publisher --dry-run simulate --once        # n
 ```
 
 Das Batteriemodell ist an die echten TSN-002-Daten angelehnt: Tagstrom ≈ 0,63 A, nachts
-gedimmt ≈ 0,52 A, Spannungsabfall ≈ 0,1 V/Tag, Batteriewechsel bei leerem Akku.
+gedimmt ≈ 0,52 A, Spannungsabfall ≈ 0,1 V/Tag, Batteriewechsel bei leerem Akku, Temperatur
+im Tagesgang. Gesendet wird wie bei Node 101 auf `traffic-nodes/<id>/measurements`, standardmäßig
+alle 15 Minuten. `--invalid-every N` verschickt u. a. den Lesefehler von Node 101.
 `--rate` (Standard 300 Nachrichten/s) bremst große Sendungen – Mosquitto verwirft sonst
 QoS-1-Nachrichten, wenn die Warteschlange eines Abonnenten überläuft. Für lange Historie
 `--backfill-direct` verwenden (schreibt direkt in `$DATABASE_URL`).
@@ -156,6 +158,7 @@ Die GitHub-Action `.github/workflows/ci.yml` führt alle Tests (inkl. MQTT) und 
 | `GET /api/health` | Lebenszeichen inkl. DB |
 | `GET /api/devices` | alle Geräte mit aktuellem Zustand (geglättete Spannung, SoC, Status, Position, letzte Meldung) |
 | `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h, Spannungstrend V/Tag |
+| `GET /api/devices/{id}/messages?limit=20` | letzte empfangene MQTT-Nachrichten inkl. verworfener (mit Grund) |
 | `GET /api/devices/{id}/history?hours=168` | Verlauf, zu Zeitintervallen zusammengefasst (Mittel/Min/Max); Zeitraum endet bei der letzten Meldung |
 | `GET /api/status-rules` | aktuell gültige Schwellwerte und Kennlinie |
 
@@ -166,6 +169,7 @@ Das Frontend fragt die Daten alle 5 Minuten neu ab (ADR-06).
 | Tabelle | Inhalt |
 |---|---|
 | `devices` | ein Eintrag je Gerät (wird beim ersten Messwert angelegt); `name`, `category`, `location` für Stammdaten (F07) |
-| `measurements` | ein Eintrag je Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, GPS, `source` (`mqtt`/`import`) |
+| `measurements` | ein Eintrag je gültiger Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, `temperature_c`, GPS, `source` (`mqtt`/`import`) |
+| `raw_messages` | jede empfangene MQTT-Nachricht im Original, `accepted` + `error` (Grund der Ablehnung) |
 
 Eindeutig je `(device_id, measured_at)`; der zugehörige Index trägt alle Abfragen „letzte Werte / Verlauf eines Geräts“.

@@ -188,3 +188,14 @@ input[type=search] {
 /* Map markers (Leaflet paths get these classes; CSS beats the SVG attributes) */
 .mk { fill: var(--c); fill-opacity: 1; stroke: var(--surface); stroke-width: 2.5; cursor: pointer }
 .mk.sel { stroke: var(--ink); stroke-width: 3.5 }
+
+/* Rejected messages */
+.alert { display: grid; gap: 4px; margin: 0 0 16px; padding: 12px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--red) }
+.msgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 420px; overflow: auto }
+.msgs li { display: grid; grid-template-columns: 160px 90px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline }
+.msgs li:first-child { border-top: 0 }
+.msgs .when { color: var(--muted) }
+.msgs .state { font-weight: 700; color: var(--green) }
+.msgs li.bad .state { color: var(--red) }
+.msgs code { font-size: 12px; overflow-wrap: anywhere; color: var(--ink-soft) }
+@media (max-width: 640px) { .msgs li { grid-template-columns: 1fr auto } .msgs .body { grid-column: 1 / -1 } }

@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from .contract import DEFAULT_TOPICS
+
 
 def _env(name: str, default: str) -> str:
     value = os.environ.get(name)
@@ -51,8 +53,10 @@ class Settings:
     mqtt_password: str | None = field(default_factory=lambda: os.environ.get("MQTT_PASSWORD") or None)
     mqtt_tls: bool = field(default_factory=lambda: _env_bool("MQTT_TLS", False))
     mqtt_ca_file: str | None = field(default_factory=lambda: os.environ.get("MQTT_CA_FILE") or None)
-    # Subscription filter; matches traffic-device/<tenant>/<type>/<device_id>/status
-    mqtt_topic: str = field(default_factory=lambda: _env("MQTT_TOPIC", "traffic-device/+/+/+/status"))
+    # Comma-separated subscription filters (live broker: traffic-nodes/<device_id>/measurements)
+    mqtt_topics: list[str] = field(
+        default_factory=lambda: [t.strip() for t in _env("MQTT_TOPIC", DEFAULT_TOPICS).split(",") if t.strip()]
+    )
     mqtt_client_id: str = field(default_factory=lambda: _env("MQTT_CLIENT_ID", "batterywatch-llv-collector"))
 
     # --- Battery / status rules --------------------------------------------
@@ -68,8 +72,9 @@ class Settings:
     # The traffic light dims at night, so the load (and the voltage under load)
     # changes over the day. The "current" voltage is averaged over this window.
     smoothing_minutes: int = field(default_factory=lambda: int(_env("SMOOTHING_MINUTES", "60")))
-    # Nodes send every ~3 minutes; no message for this long marks a device as stale.
-    stale_after_minutes: int = field(default_factory=lambda: int(_env("STALE_AFTER_MINUTES", "30")))
+    # Node 101 sends every 15 minutes; no valid measurement for this long (3 missed
+    # messages) marks a device as stale.
+    stale_after_minutes: int = field(default_factory=lambda: int(_env("STALE_AFTER_MINUTES", "45")))
 
     # --- API ----------------------------------------------------------------
     cors_origins: list[str] = field(

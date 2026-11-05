@@ -19,7 +19,9 @@ from batterywatch.tools import import_data, test_publisher
 
 from .conftest import SAMPLE_CSV
 
-TOPIC = build_topic("demo", "trafficnode", "SIM-001")
+TOPIC = build_topic("SIM-001")
+NODE_101_READ_ERROR = (b'{"current_mA":-1.25,"voltage_mV":5368709120.00,"temperature_C":17,"lat":null,'
+                       b'"lon":null,"altitude_m":null,"satellites":null,"time":null}')
 
 
 def msg(at: datetime, current_ma=600.0, voltage_mv=11600.0, lat=48.2, lon=8.6) -> bytes:
@@ -39,7 +41,7 @@ def test_store_computes_battery_voltage_and_ignores_duplicates(db_url, db):
     row = db.execute("SELECT voltage_mv, current_ma, battery_voltage_mv, source FROM measurements").fetchall()
     assert row == [(11276.0, 551.0, pytest.approx(11277.102), "mqtt")]
     assert db.execute("SELECT device_id, tenant, device_type FROM devices").fetchall() == [
-        ("SIM-001", "demo", "trafficnode")
+        ("SIM-001", None, "trafficnode")
     ]
 
 
@@ -52,6 +54,28 @@ def test_collector_stores_valid_and_rejects_invalid(db_url, db):
     assert collector.handle_message("wrong/topic", msg(at)) == "rejected"
     assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 1
     assert collector.stats == {"stored": 1, "duplicate": 1, "rejected": 2}
+    # every message is logged, with the reason if it was rejected
+    log = db.execute("SELECT device_id, accepted, error IS NOT NULL FROM raw_messages ORDER BY id").fetchall()
+    # (the duplicate was valid, so it counts as accepted)
+    assert log == [("SIM-001", True, False), ("SIM-001", True, False), ("SIM-001", False, True), (None, False, True)]
+
+
+def test_node_sending_only_invalid_values_is_listed_with_reason(db_url, db, api):
+    collector = Collector(make_settings(db_url), MeasurementStore(db_url))
+    assert collector.handle_message("traffic-nodes/101/measurements", NODE_101_READ_ERROR) == "rejected"
+    assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 0
+    d = api.get("/api/devices/101").json()
+    assert d["status"] == "unbekannt" and d["measurement_count"] == 0 and d["stale"] is True
+    assert d["minutes_since_last_message"] < 1
+    assert "voltage_mV" in d["last_message_error"]
+    msgs = api.get("/api/devices/101/messages").json()
+    assert len(msgs) == 1 and msgs[0]["accepted"] is False and "5368709120" in msgs[0]["payload"]
+    assert api.get("/api/devices/101/history").json()["points"] == []
+    # a valid message afterwards clears the warning and stores the temperature
+    ok = build_payload(620.0, 12100.0, datetime.now(timezone.utc), temperature_c=17.0).encode()
+    assert collector.handle_message("traffic-nodes/101/measurements", ok) == "stored"
+    d = api.get("/api/devices/101").json()
+    assert d["last_message_error"] is None and d["temperature_c"] == 17.0 and d["status"] == "ok"
 
 
 # --- Import -----------------------------------------------------------------
@@ -87,7 +111,7 @@ def seed(db_url, device_id="SIM-001", hours=48, volts_start=12.0, volts_end=11.0
     for k in range(steps + 1):
         at = end - timedelta(minutes=3 * (steps - k))
         volts = volts_start + (volts_end - volts_start) * k / steps
-        topic = build_topic("demo", "trafficnode", device_id)
+        topic = build_topic(device_id)
         store.save(parse_message(topic, msg(at, current_ma=600.0, voltage_mv=volts * 1000)))
     store.close()
 
@@ -164,7 +188,7 @@ def test_end_to_end_publisher_broker_collector_db(db_url, db):
         assert subscribed.wait(10), "collector did not subscribe"
         test_publisher.main(
             ["--host", host, "--port", str(port), "--invalid-every", "4",
-             "simulate", "--devices", "3", "--backfill-hours", "0.2", "--once"]
+             "simulate", "--devices", "3", "--backfill-hours", "0.2", "--step", "180", "--once"]
         )
         # 3 devices * (4 backfilled + 1 live) = 15 messages, every 4th broken -> 12 valid
         deadline = time.time() + 10
@@ -176,6 +200,7 @@ def test_end_to_end_publisher_broker_collector_db(db_url, db):
     assert collector.stats["rejected"] == 3
     assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 12
     assert db.execute("SELECT count(*) FROM devices").fetchone()[0] == 3
+    assert db.execute("SELECT count(*) FROM raw_messages").fetchone()[0] == 15
 
 
 # --- Import from a foreign PostgreSQL (history DB) --------------------------------

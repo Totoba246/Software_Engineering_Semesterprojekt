@@ -10,7 +10,7 @@ from typing import Iterable
 import psycopg
 
 from .battery import battery_voltage_mv
-from .contract import Measurement
+from .contract import Measurement, TopicInfo
 
 log = logging.getLogger(__name__)
 
@@ -20,11 +20,18 @@ _UPSERT_DEVICE = """
     ON CONFLICT (device_id) DO NOTHING
 """
 
-_INSERT_MEASUREMENT = """
-    INSERT INTO measurements (device_id, measured_at, current_ma, voltage_mv, battery_voltage_mv,
-                              latitude, longitude, altitude_m, satellites, source)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+_COLUMNS = ("device_id, measured_at, current_ma, voltage_mv, battery_voltage_mv, "
+            "latitude, longitude, altitude_m, satellites, temperature_c, source")
+
+_INSERT_MEASUREMENT = f"""
+    INSERT INTO measurements ({_COLUMNS})
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (device_id, measured_at) DO NOTHING
+"""
+
+_INSERT_RAW = """
+    INSERT INTO raw_messages (topic, device_id, payload, accepted, error)
+    VALUES (%s, %s, %s, %s, %s)
 """
 
 
@@ -63,6 +70,7 @@ def _row(m: Measurement, shunt_resistance_ohm: float, source: str) -> tuple:
         m.longitude,
         m.altitude_m,
         m.satellites,
+        m.temperature_c,
         source,
     )
 
@@ -87,12 +95,41 @@ class MeasurementStore:
 
     def save(self, m: Measurement, source: str = "mqtt") -> bool:
         """Store one measurement. Returns False if it was a duplicate."""
+        return self._with_retry(lambda conn: self._insert(conn, m, source))
+
+    def save_message(
+        self,
+        topic: str,
+        payload: str,
+        device: TopicInfo | None,
+        measurement: Measurement | None,
+        error: str | None,
+    ) -> bool:
+        """Log a received MQTT message and, if it was valid, store its measurement.
+
+        The device is registered as soon as the topic is valid, so a node that
+        only sends implausible values still shows up (with the reason).
+        Returns False if the measurement was a duplicate.
+        """
+
+        def work(conn: psycopg.Connection) -> bool:
+            if device is not None:
+                conn.execute(_UPSERT_DEVICE, (device.device_id, device.tenant, device.device_type))
+            conn.execute(_INSERT_RAW, (topic, device.device_id if device else None, payload[:4000],
+                                       measurement is not None, error))
+            return self._insert(conn, measurement, "mqtt") if measurement is not None else False
+
+        return self._with_retry(work)
+
+    def _insert(self, conn: psycopg.Connection, m: Measurement, source: str) -> bool:
+        conn.execute(_UPSERT_DEVICE, (m.device_id, m.tenant, m.device_type))
+        return conn.execute(_INSERT_MEASUREMENT, _row(m, self._shunt, source)).rowcount == 1
+
+    def _with_retry(self, work):
         for attempt in (1, 2):
             try:
                 with self.conn.transaction():
-                    self.conn.execute(_UPSERT_DEVICE, (m.device_id, m.tenant, m.device_type))
-                    cur = self.conn.execute(_INSERT_MEASUREMENT, _row(m, self._shunt, source))
-                    return cur.rowcount == 1
+                    return work(self.conn)
             except psycopg.OperationalError:
                 if attempt == 2:
                     raise
@@ -122,20 +159,16 @@ class MeasurementStore:
             conn.execute(
                 "CREATE TEMP TABLE IF NOT EXISTS import_buffer (device_id TEXT, measured_at TIMESTAMPTZ, "
                 "current_ma FLOAT8, voltage_mv FLOAT8, battery_voltage_mv FLOAT8, latitude FLOAT8, "
-                "longitude FLOAT8, altitude_m FLOAT8, satellites INTEGER, source TEXT) ON COMMIT DELETE ROWS"
+                "longitude FLOAT8, altitude_m FLOAT8, satellites INTEGER, temperature_c FLOAT8, source TEXT) "
+                "ON COMMIT DELETE ROWS"
             )
             with conn.cursor() as cur:
-                with cur.copy(
-                    "COPY import_buffer (device_id, measured_at, current_ma, voltage_mv, battery_voltage_mv, "
-                    "latitude, longitude, altitude_m, satellites, source) FROM STDIN"
-                ) as copy:
+                with cur.copy(f"COPY import_buffer ({_COLUMNS}) FROM STDIN") as copy:
                     for m in batch:
                         copy.write_row(_row(m, self._shunt, source))
             cur = conn.execute(
-                "INSERT INTO measurements (device_id, measured_at, current_ma, voltage_mv, battery_voltage_mv, "
-                "latitude, longitude, altitude_m, satellites, source) "
-                "SELECT DISTINCT ON (device_id, measured_at) device_id, measured_at, current_ma, voltage_mv, "
-                "battery_voltage_mv, latitude, longitude, altitude_m, satellites, source FROM import_buffer "
+                f"INSERT INTO measurements ({_COLUMNS}) "
+                f"SELECT DISTINCT ON (device_id, measured_at) {_COLUMNS} FROM import_buffer "
                 "ON CONFLICT (device_id, measured_at) DO NOTHING"
             )
             return cur.rowcount

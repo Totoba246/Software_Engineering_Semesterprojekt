@@ -13,7 +13,7 @@ x-backend-env: &backend-env
   STATUS_CRITICAL_BELOW: ${STATUS_CRITICAL_BELOW:-20}
   STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
   SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
-  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-30}
+  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}
 
 services:
   db:
@@ -55,7 +55,7 @@ services:
       MQTT_TLS: ${COLLECTOR_MQTT_TLS:-false}
       MQTT_USERNAME: ${COLLECTOR_MQTT_USERNAME:-}
       MQTT_PASSWORD: ${COLLECTOR_MQTT_PASSWORD:-}
-      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-device/+/+/+/status}
+      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-nodes/+/measurements,traffic-device/+/+/+/status}
       MQTT_CLIENT_ID: ${COLLECTOR_MQTT_CLIENT_ID:-batterywatch-llv-collector}
     depends_on:
       db:

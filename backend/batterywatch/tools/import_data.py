@@ -63,7 +63,7 @@ def _rows_from_sql(dsn: str, query: str) -> list[Measurement]:
             out.append(
                 Measurement(
                     device_id=str(r["device_id"]),
-                    tenant=r.get("tenant") or "unknown",
+                    tenant=r.get("tenant") or None,
                     device_type=r.get("device_type") or "trafficnode",
                     measured_at=ts,
                     current_ma=float(r["current_ma"]),

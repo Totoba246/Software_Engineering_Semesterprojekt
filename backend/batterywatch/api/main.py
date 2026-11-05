@@ -49,7 +49,7 @@ class Position(BaseModel):
 class DeviceSummary(BaseModel):
     device_id: str
     name: str
-    tenant: str
+    tenant: str | None
     device_type: str
     category: str | None
     location: str | None
@@ -59,9 +59,22 @@ class DeviceSummary(BaseModel):
     battery_voltage_v: float | None  # smoothed U_bat
     last_battery_voltage_v: float | None  # newest single reading
     current_a: float | None  # newest single reading
+    temperature_c: float | None  # newest single reading
     soc_percent: float | None
     status: battery.BatteryStatus
     position: Position | None
+    # newest MQTT message, also if it was rejected (e.g. implausible voltage)
+    last_message_at: datetime | None
+    minutes_since_last_message: float | None
+    last_message_error: str | None  # set if the newest message was rejected
+
+
+class Message(BaseModel):
+    received_at: datetime
+    topic: str
+    accepted: bool
+    error: str | None
+    payload: str
 
 
 class DeviceDetail(DeviceSummary):
@@ -123,6 +136,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         soc = battery.state_of_charge(volts, s.soc_curve)
         last_seen = row["last_seen"]
         minutes = (now - last_seen).total_seconds() / 60 if last_seen else None
+        last_msg = row["last_message_at"]
+        msg_minutes = (now - last_msg).total_seconds() / 60 if last_msg else None
         position = None
         if row["latitude"] is not None:
             position = Position(
@@ -146,6 +161,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 round(row["last_battery_voltage_mv"] / 1000, 3) if row["last_battery_voltage_mv"] is not None else None
             ),
             current_a=round(row["last_current_ma"] / 1000, 3) if row["last_current_ma"] is not None else None,
+            temperature_c=round(row["temperature_c"], 1) if row["temperature_c"] is not None else None,
+            last_message_at=last_msg,
+            minutes_since_last_message=round(msg_minutes, 1) if msg_minutes is not None else None,
+            last_message_error=row["last_message_error"] if row["last_message_accepted"] is False else None,
             soc_percent=round(soc, 1) if soc is not None else None,
             status=battery.classify(soc, s.status_critical_below, s.status_low_below),
             position=position,
@@ -240,6 +259,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for r in rows
         ]
         return History(device_id=device_id, start=start, end=end, bucket_seconds=bucket, points=points)
+
+    @app.get("/api/devices/{device_id}/messages", response_model=list[Message])
+    def get_messages(device_id: str, limit: int = Query(20, ge=1, le=500), conn=Depends(get_conn)):
+        """Newest received MQTT messages of a device, including rejected ones."""
+        if not conn.execute("SELECT 1 FROM devices WHERE device_id = %s", (device_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Gerät nicht gefunden")
+        return conn.execute(queries.MESSAGES, {"device_id": device_id, "limit": limit}).fetchall()
 
     return app
 

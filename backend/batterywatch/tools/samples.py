@@ -54,7 +54,7 @@ def read_sample_csv(path: str | Path, device_id: str | None = None) -> list[Meas
             out.append(
                 Measurement(
                     device_id=device_id or row["device_id"],
-                    tenant=row.get("tenant") or "unknown",
+                    tenant=row.get("tenant") or None,
                     device_type=row.get("device_type") or "trafficnode",
                     measured_at=parse_time(row["_time"]),
                     current_ma=current_ma,

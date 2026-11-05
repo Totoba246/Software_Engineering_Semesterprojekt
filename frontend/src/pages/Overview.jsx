@@ -39,7 +39,7 @@ export default function Overview({ devices, rules }) {
   const [hoverId, setHoverId] = useState(null)
 
   const all = devices ?? []
-  const tenants = useMemo(() => [...new Set(all.map((d) => d.tenant))].sort(), [all])
+  const tenants = useMemo(() => [...new Set(all.map((d) => d.tenant).filter(Boolean))].sort(), [all])
 
   // Everything except the status filter (so the status buttons can show counts)
   const base = useMemo(() => {
@@ -135,12 +135,18 @@ export default function Overview({ devices, rules }) {
                   <span className="info">
                     <span className="name">{d.name}</span>
                     <span className="meta">
-                      {[d.name !== d.device_id && d.device_id, d.tenant, d.location, d.battery_voltage_v != null && `${d.battery_voltage_v.toFixed(2).replace('.', ',')} V`]
-                        .filter(Boolean)
-                        .join(' · ')}
+                      {d.last_message_error ? (
+                        <span className="warn">Letzte Nachricht ungültig</span>
+                      ) : (
+                        [d.name !== d.device_id && d.device_id, d.tenant, d.location, d.battery_voltage_v != null && `${d.battery_voltage_v.toFixed(2).replace('.', ',')} V`]
+                          .filter(Boolean)
+                          .join(' · ')
+                      )}
                     </span>
                   </span>
-                  <span className={`seen${d.stale ? ' stale' : ''}`}>{ago(d.minutes_since_last_seen)}</span>
+                  <span className={`seen${d.stale ? ' stale' : ''}`}>
+                    {ago(d.minutes_since_last_message ?? d.minutes_since_last_seen)}
+                  </span>
                 </Link>
               </li>
             ))}

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 
 from ..config import Settings, get_settings
-from ..contract import ContractError, parse_message
+from ..contract import ContractError, parse_message, parse_topic
 from ..db import MeasurementStore, ensure_schema
 
 log = logging.getLogger("batterywatch.collector")
@@ -27,15 +27,22 @@ class Collector:
         self.stats = {"stored": 0, "duplicate": 0, "rejected": 0}
 
     def handle_message(self, topic: str, payload: bytes) -> str:
-        """Validate and store one message. Returns 'stored', 'duplicate' or 'rejected'."""
+        """Validate and store one message. Returns 'stored', 'duplicate' or 'rejected'.
+
+        Every message is logged in raw_messages. Only valid ones become measurements
+        (ADR-10: invalid values never reach the measurements/charts).
+        """
+        text = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+        device = measurement = error = None
         try:
+            device = parse_topic(topic)
             measurement = parse_message(topic, payload, received_at=datetime.now(timezone.utc))
         except ContractError as exc:
-            # ADR-10: invalid messages are discarded and logged, never stored.
-            log.warning("rejected message on %s: %s | payload=%r", topic, exc, payload[:300])
-            result = "rejected"
-        else:
-            result = "stored" if self.store.save(measurement) else "duplicate"
+            error = str(exc)
+            log.warning("rejected message on %s: %s | payload=%r", topic, exc, text[:300])
+        stored = self.store.save_message(topic, text, device, measurement, error)
+        result = "rejected" if error else ("stored" if stored else "duplicate")
+        if measurement is not None:
             log.debug("%s %s @ %s", result, measurement.device_id, measurement.measured_at.isoformat())
         self.stats[result] += 1
         total = sum(self.stats.values())
@@ -49,21 +56,21 @@ class Collector:
             log.error("MQTT connect failed: %s", reason_code)
             return
         # Subscribing here means we re-subscribe automatically after reconnects.
-        client.subscribe(self.settings.mqtt_topic, qos=1)
+        client.subscribe([(t, 1) for t in self.settings.mqtt_topics])
         log.info(
-            "connected to %s:%s, subscribed to %r",
+            "connected to %s:%s, subscribing to %s",
             self.settings.mqtt_host,
             self.settings.mqtt_port,
-            self.settings.mqtt_topic,
+            ", ".join(self.settings.mqtt_topics),
         )
 
     def on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
-        for rc in reason_codes:
+        for topic, rc in zip(self.settings.mqtt_topics, reason_codes):
             if rc.is_failure:
                 # e.g. the broker's ACL does not allow this topic for our user
-                log.error("broker refused subscription to %r: %s", self.settings.mqtt_topic, rc)
+                log.error("broker refused subscription to %r: %s", topic, rc)
             else:
-                log.info("subscription confirmed (granted %s)", rc)
+                log.info("subscription to %r confirmed (%s)", topic, rc)
 
     def on_connect_fail(self, client, userdata):
         log.warning(

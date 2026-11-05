@@ -32,6 +32,29 @@ function statusText(d, rules) {
   }
 }
 
+function MessagesCard({ device }) {
+  const { data, error } = usePolling(() => api.messages(device.device_id, 20), [device.device_id, device.last_message_at])
+  if (!data?.length && !error) return null
+  return (
+    <section className="card span2" aria-label="Letzte Nachrichten">
+      <h2>Letzte MQTT-Nachrichten</h2>
+      {error && <p className="hint warn">Nachrichten konnten nicht geladen werden: {error.message}</p>}
+      <ul className="msgs">
+        {(data ?? []).map((m, i) => (
+          <li key={i} className={m.accepted ? '' : 'bad'}>
+            <span className="when">{dateTime(m.received_at)}</span>
+            <span className="state">{m.accepted ? 'gespeichert' : 'verworfen'}</span>
+            <span className="body">
+              {m.error && <span className="warn">{m.error}<br /></span>}
+              <code>{m.payload}</code>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function HistoryCard({ device, rules }) {
   const [range, setRange] = useState(24 * 7)
   const [metric, setMetric] = useState('soc')
@@ -112,6 +135,16 @@ export default function DeviceDetail({ rules }) {
           <p>{[d.name !== d.device_id && d.device_id, d.tenant, d.device_type, d.location, d.category].filter(Boolean).join(' · ')}</p>
         </div>
         {error && <p className="hint warn">Aktualisierung fehlgeschlagen: {error.message}</p>}
+        {d.last_message_error && (
+          <div className="alert">
+            <strong>Die letzte Nachricht ({ago(d.minutes_since_last_message)}) wurde verworfen.</strong>
+            <span>{d.last_message_error}</span>
+            <span className="hint">
+              Ungültige Werte werden nicht gespeichert. Häufige Ursache: Messwert nicht plausibel (z. B. kein Akku
+              angeschlossen oder Sensor-Lesefehler). Details unten unter „Letzte MQTT-Nachrichten“.
+            </span>
+          </div>
+        )}
         <div className="d-grid">
           <section className={`card s-${d.status}`} aria-label="Akkustand">
             <div className="bigbatt">
@@ -120,20 +153,28 @@ export default function DeviceDetail({ rules }) {
             </div>
             <p className="status"><i className="dot" />{STATUS_LABEL[d.status]}</p>
             <p>{statusText(d, rules)}</p>
-            <p className="hint" style={{ marginTop: 14 }}>
+            {d.battery_voltage_v != null && <p className="hint" style={{ marginTop: 14 }}>
               Akkuspannung {num(d.battery_voltage_v, 2)} V (Mittel der letzten {rules?.smoothing_minutes ?? 60} Min.
               vor der letzten Meldung, inkl. Shunt-Korrektur U<sub>bat</sub> = {num(rules?.shunt_resistance_ohm ?? 0.002, 3)} Ω · I + U<sub>mess</sub>)
-            </p>
+            </p>}
           </section>
 
           <section className="card" aria-label="Gerätedaten">
             <dl className="facts">
-              <dt>Letzte Meldung</dt>
-              <dd className={d.stale ? 'stale' : ''}>{ago(d.minutes_since_last_seen)}<br /><small>{dateTime(d.last_seen)}</small></dd>
+              <dt>Letzter Messwert</dt>
+              <dd className={d.stale ? 'stale' : ''}>
+                {d.last_seen ? <>{ago(d.minutes_since_last_seen)}<br /><small>{dateTime(d.last_seen)}</small></> : 'noch keiner'}
+              </dd>
+              <dt>Letzte Nachricht</dt>
+              <dd className={d.last_message_error ? 'stale' : ''}>
+                {d.last_message_at ? `${ago(d.minutes_since_last_message)}${d.last_message_error ? ' (verworfen)' : ''}` : '– (nur importierte Daten)'}
+              </dd>
+              <dt>Temperatur</dt>
+              <dd>{d.temperature_c != null ? `${num(d.temperature_c, 1)} °C` : '–'}</dd>
               <dt>Letzter Einzelwert</dt>
-              <dd>{num(d.last_battery_voltage_v, 3)} V · {num(d.current_a, 3)} A</dd>
+              <dd>{d.last_battery_voltage_v != null ? `${num(d.last_battery_voltage_v, 3)} V · ${num(d.current_a, 3)} A` : '–'}</dd>
               <dt>Ø Strom 24 Std.</dt>
-              <dd>{num(d.avg_current_a_24h, 3)} A</dd>
+              <dd>{d.avg_current_a_24h != null ? `${num(d.avg_current_a_24h, 3)} A` : '–'}</dd>
               <dt>Spannungstrend</dt>
               <dd>{d.voltage_trend_v_per_day != null ? `${num(d.voltage_trend_v_per_day, 3)} V pro Tag (72 Std.)` : '–'}</dd>
               <dt>Position</dt>
@@ -143,11 +184,13 @@ export default function DeviceDetail({ rules }) {
                 {d.position?.satellites != null && ` · ${d.position.satellites} Sat.`}
               </dd>
               <dt>Messwerte</dt>
-              <dd>{d.measurement_count.toLocaleString('de-DE')} seit {dateTime(d.first_seen)}</dd>
+              <dd>{d.measurement_count ? `${d.measurement_count.toLocaleString('de-DE')} seit ${dateTime(d.first_seen)}` : 'keine'}</dd>
             </dl>
           </section>
 
           <HistoryCard device={d} rules={rules} />
+
+          <MessagesCard device={d} />
 
           <section className="card span2" aria-label="Standort">
             <h2>Standort</h2>

@@ -45,9 +45,12 @@ Stückweise lineare Kennlinie Spannung → Prozent (`BATTERY_SOC_CURVE`).
 | Gut | SoC ≥ 50 % | grün |
 | Unbekannt | noch keine Messwerte | grau |
 
-Zusätzlich: **Keine Meldung seit > 30 Minuten** (`STALE_AFTER_MINUTES`, Nodes senden alle
-~3 Minuten) → „Letzte Meldung“ wird rot markiert. Der Akkustatus bezieht sich dann auf den
-letzten bekannten Stand.
+Zusätzlich: **Kein gültiger Messwert seit > 45 Minuten** (`STALE_AFTER_MINUTES`; Node 101
+sendet alle 15 Minuten, also nach drei verpassten Nachrichten) → „Letzte Meldung“ wird rot
+markiert. Der Akkustatus bezieht sich dann auf den letzten bekannten Stand.
+
+Sendet ein Gerät nur **ungültige** Werte (z. B. 5 368 709 120 mV), bleibt der Status
+„Unbekannt“ bzw. der letzte gültige Stand; das Frontend zeigt den Grund der Ablehnung an.
 
 ## Offene Punkte
 

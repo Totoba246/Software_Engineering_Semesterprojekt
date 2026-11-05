@@ -40,7 +40,10 @@ aus – damit lässt sich die Zuordnung per `--table` bzw. `import_data sql --qu
 
 - Frontend: `http://212.227.31.76:20800`
 - Läuft der Live-Empfang? `docker compose logs -f collector`
-  - `subscription confirmed` → verbunden, wartet auf Nachrichten
+  - `subscription to 'traffic-nodes/+/measurements' confirmed` → verbunden, wartet auf Nachrichten
+    (Node 101 sendet alle 15 Minuten)
+  - `rejected message … voltage_mV = 5368709120 …` → Nachricht kam an, Werte unplausibel
+    (Node misst gerade keinen Akku); das Gerät erscheint trotzdem im Frontend, mit Hinweis
   - `cannot reach MQTT broker` → Server/Port/TLS prüfen
   - `broker refused subscription` → Topic für unseren Benutzer nicht freigegeben
 

@@ -56,6 +56,12 @@ if [ ! -f .env ]; then
   if [[ ${public_db:-n} =~ ^[jJyY] ]]; then set_env DB_BIND 0.0.0.0; fi
 else
   say ".env existiert bereits – Einstellungen werden beibehalten"
+  # upgrade settings from earlier versions of this script
+  if grep -qx 'COLLECTOR_MQTT_TOPIC=traffic-device/+/+/+/status' .env; then
+    set_env COLLECTOR_MQTT_TOPIC "traffic-nodes/+/measurements,traffic-device/+/+/+/status"
+    echo "MQTT-Topic auf traffic-nodes/+/measurements umgestellt"
+  fi
+  if grep -qx 'STALE_AFTER_MINUTES=30' .env; then set_env STALE_AFTER_MINUTES 45; fi
 fi
 
 say "Baue und starte die Container (beim ersten Mal einige Minuten)"

@@ -20,5 +20,6 @@ export const api = {
   devices: () => get('/api/devices'),
   device: (id) => get(`/api/devices/${encodeURIComponent(id)}`),
   history: (id, hours) => get(`/api/devices/${encodeURIComponent(id)}/history?hours=${hours}`),
+  messages: (id, limit = 20) => get(`/api/devices/${encodeURIComponent(id)}/messages?limit=${limit}`),
   statusRules: () => get('/api/status-rules'),
 }

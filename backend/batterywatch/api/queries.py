@@ -6,17 +6,22 @@
 #           Single readings scatter by +-0.15 V and the load changes between day and
 #           night (the traffic light dims at night), so a single value is too noisy.
 #  - pos:   newest measurement that has a GPS fix
+#  - msg:   newest received MQTT message, valid or not (shows rejected values)
 DEVICE_STATE = """
 SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
        last.measured_at              AS last_seen,
        last.current_ma               AS last_current_ma,
        last.battery_voltage_mv       AS last_battery_voltage_mv,
+       last.temperature_c            AS temperature_c,
+       msg.received_at               AS last_message_at,
+       msg.accepted                  AS last_message_accepted,
+       msg.error                     AS last_message_error,
        win.avg_battery_voltage_mv,
        win.avg_current_ma,
        pos.latitude, pos.longitude, pos.altitude_m, pos.satellites
 FROM devices d
 LEFT JOIN LATERAL (
-    SELECT measured_at, current_ma, battery_voltage_mv
+    SELECT measured_at, current_ma, battery_voltage_mv, temperature_c
     FROM measurements m
     WHERE m.device_id = d.device_id
     ORDER BY measured_at DESC
@@ -36,6 +41,13 @@ LEFT JOIN LATERAL (
     ORDER BY measured_at DESC
     LIMIT 1
 ) pos ON true
+LEFT JOIN LATERAL (
+    SELECT received_at, accepted, error
+    FROM raw_messages r
+    WHERE r.device_id = d.device_id
+    ORDER BY received_at DESC
+    LIMIT 1
+) msg ON true
 {where}
 ORDER BY d.device_id
 """
@@ -73,3 +85,11 @@ ORDER BY 1
 """
 
 LAST_SEEN = "SELECT max(measured_at) AS last_seen FROM measurements WHERE device_id = %(device_id)s"
+
+MESSAGES = """
+SELECT received_at, topic, accepted, error, payload
+FROM raw_messages
+WHERE device_id = %(device_id)s
+ORDER BY received_at DESC
+LIMIT %(limit)s
+"""

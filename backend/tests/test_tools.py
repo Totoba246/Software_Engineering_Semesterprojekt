@@ -38,13 +38,13 @@ def test_shift_to_keeps_time_of_day_and_ends_before_target():
 
 
 def test_simulated_nodes_have_different_states_now():
-    nodes = make_nodes(8, "demo", seed=1, anchor=ANCHOR)
+    nodes = make_nodes(8, seed=1, anchor=ANCHOR)
     volts = sorted(n.open_circuit_voltage(ANCHOR) for n in nodes)
     assert volts[0] < 11.3 and volts[-1] > 12.3
 
 
 def test_simulated_battery_drains_and_gets_swapped():
-    node = make_nodes(1, "demo", seed=1, anchor=ANCHOR)[0]
+    node = make_nodes(1, seed=1, anchor=ANCHOR)[0]
     later = node.open_circuit_voltage(ANCHOR + timedelta(days=1))
     assert later == pytest.approx(node.open_circuit_voltage(ANCHOR) - node.drain_v_per_day)
     for days in range(0, 120):
@@ -53,7 +53,7 @@ def test_simulated_battery_drains_and_gets_swapped():
 
 
 def test_simulated_night_dimming_draws_less_current():
-    node = make_nodes(1, "demo", seed=1, anchor=ANCHOR)[0]
+    node = make_nodes(1, seed=1, anchor=ANCHOR)[0]
     rng = random.Random(0)
     day = [node.sample(datetime(2026, 11, 5, 11, m, tzinfo=timezone.utc), rng)["current_ma"] for m in range(60)]
     night = [node.sample(datetime(2026, 11, 5, 1, m, tzinfo=timezone.utc), rng)["current_ma"] for m in range(60)]
@@ -63,11 +63,13 @@ def test_simulated_night_dimming_draws_less_current():
 def test_simulated_message_satisfies_contract():
     from batterywatch.contract import build_payload, build_topic
 
-    node = make_nodes(1, "demo", seed=1, anchor=ANCHOR)[0]
+    node = make_nodes(1, seed=1, anchor=ANCHOR)[0]
     s = node.sample(ANCHOR, random.Random(0))
-    raw = build_payload(s["current_ma"], s["voltage_mv"], ANCHOR, s["lat"], s["lon"], s["altitude_m"], s["satellites"])
-    m = parse_message(build_topic("demo", "trafficnode", node.device_id), raw)
+    raw = build_payload(s["current_ma"], s["voltage_mv"], ANCHOR, s["lat"], s["lon"], s["altitude_m"], s["satellites"],
+                        s["temperature_c"])
+    m = parse_message(build_topic(node.device_id), raw)
     assert m.device_id == "SIM-001" and m.measured_at == ANCHOR
+    assert -10 < m.temperature_c < 30
 
 
 # --- column detection for the history database ---------------------------------
