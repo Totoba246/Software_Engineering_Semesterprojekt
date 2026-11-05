@@ -75,6 +75,16 @@ Ein erneuter Import erzeugt keine Duplikate (eindeutig je Gerät + Zeitstempel).
 
 ### c) Historien-Datenbank des Kurses
 
+Auf dem Kursserver einfach `./deploy/import-history.sh` ausführen (siehe [Server.md](Server.md)) –
+Tabelle, Spalten und Einheiten werden automatisch erkannt:
+
+```bash
+python -m batterywatch.tools.import_data history --source-dsn "host=127.0.0.1 dbname=measurements user=tinf25d-llv password=..." --inspect
+python -m batterywatch.tools.import_data history --source-dsn "..."
+```
+
+Alternativ mit expliziter Abfrage:
+
 Die gemeinsame Historien-PostgreSQL (Port 5432, nur per SSH-Tunnel) lässt sich mit einer
 SQL-Abfrage übernehmen. Die Abfrage muss die Spalten `device_id, measured_at, current_ma,
 voltage_mv` liefern (optional `tenant, device_type, latitude, longitude, altitude_m, satellites`) –

@@ -11,8 +11,11 @@ Examples::
     # same, but moved in time so the data ends today (frontend looks "live")
     python -m batterywatch.tools.import_data csv ../docs/samples/traffic_devices_signals.csv --shift-to-now
 
-    # from another PostgreSQL database (e.g. the course's history DB via SSH tunnel);
-    # the query must return the columns listed in SQL_COLUMNS (use aliases)
+    # from another PostgreSQL database (e.g. the course's history DB), columns detected automatically
+    python -m batterywatch.tools.import_data history --source-dsn postgresql://user:pass@localhost:5432/measurements
+    python -m batterywatch.tools.import_data history --source-dsn ... --inspect   # only show tables/columns
+
+    # same with an explicit query; it must return the columns listed in SQL_COLUMNS (use aliases)
     python -m batterywatch.tools.import_data sql \\
         --source-dsn postgresql://user:pass@localhost:15432/history \\
         --query "SELECT device_id, time AS measured_at, current_ma, voltage_mv, lat AS latitude, \\
@@ -23,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -32,6 +36,7 @@ from psycopg.rows import dict_row
 from ..config import get_settings
 from ..contract import Measurement
 from ..db import MeasurementStore, ensure_schema
+from .history_source import auto_query, describe
 from .samples import read_sample_csv, shift_to
 
 log = logging.getLogger("batterywatch.import")
@@ -44,6 +49,7 @@ SQL_COLUMNS = {
 
 def _rows_from_sql(dsn: str, query: str) -> list[Measurement]:
     with psycopg.connect(dsn, row_factory=dict_row) as src:
+        src.execute("SET TIME ZONE 'UTC'")  # timestamps without zone are taken as UTC
         cur = src.execute(query)
         columns = {c.name for c in cur.description}
         missing = [c for c in SQL_COLUMNS["required"] if c not in columns]
@@ -81,18 +87,33 @@ def main(argv: list[str] | None = None) -> int:
     p_csv.add_argument("--device-id", help="store the rows under this device id instead of the one in the file")
 
     p_sql = sub.add_parser("sql", help="import from another PostgreSQL database")
-    p_sql.add_argument("--source-dsn", required=True)
+    dsn_help = "connection to the source database (default: $SOURCE_DSN, keeps the password out of `ps`)"
+    p_sql.add_argument("--source-dsn", default=os.environ.get("SOURCE_DSN"), help=dsn_help)
     p_sql.add_argument("--query", required=True)
 
-    for p in (p_csv, p_sql):
+    p_hist = sub.add_parser("history", help="import from another PostgreSQL, columns detected automatically")
+    p_hist.add_argument("--source-dsn", default=os.environ.get("SOURCE_DSN"), help=dsn_help)
+    p_hist.add_argument("--table", help="source table (default: best match)")
+    p_hist.add_argument("--device-id", help="device id if the source has no device column")
+    p_hist.add_argument("--inspect", action="store_true", help="only print the tables and columns of the source")
+
+    for p in (p_csv, p_sql, p_hist):
         p.add_argument("--shift-to-now", action="store_true", help="move timestamps so the data ends today")
         p.add_argument("--database-url", help="target database (default: $DATABASE_URL)")
 
     args = parser.parse_args(argv)
+    if args.source in ("sql", "history") and not args.source_dsn:
+        parser.error("--source-dsn or $SOURCE_DSN is required")
     settings = get_settings()
 
     if args.source == "csv":
         rows = read_sample_csv(args.file, device_id=args.device_id)
+    elif args.source == "history":
+        if args.inspect:
+            with psycopg.connect(args.source_dsn) as src:
+                print(describe(src))
+            return 0
+        rows = _rows_from_sql(args.source_dsn, auto_query(args.source_dsn, args.table, args.device_id))
     else:
         rows = _rows_from_sql(args.source_dsn, args.query)
     # Same plausibility rule as the MQTT contract: 0 V means "no measurement".

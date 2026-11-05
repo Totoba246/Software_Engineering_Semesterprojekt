@@ -26,7 +26,9 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${DB_PORT:-20832}:5432"   # only local / via SSH tunnel
+      # DB_BIND=127.0.0.1: only on the server itself / via SSH tunnel (default)
+      # DB_BIND=0.0.0.0:   reachable from the internet on DB_PORT (password protected)
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-20832}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

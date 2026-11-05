@@ -68,3 +68,32 @@ def test_simulated_message_satisfies_contract():
     raw = build_payload(s["current_ma"], s["voltage_mv"], ANCHOR, s["lat"], s["lon"], s["altitude_m"], s["satellites"])
     m = parse_message(build_topic("demo", "trafficnode", node.device_id), raw)
     assert m.device_id == "SIM-001" and m.measured_at == ANCHOR
+
+
+# --- column detection for the history database ---------------------------------
+from batterywatch.tools.history_source import guess_mapping  # noqa: E402
+
+
+def test_guess_mapping_influx_style_columns():
+    tables = {
+        ("public", "users"): [("id", "integer"), ("name", "text")],
+        ("public", "traffic_device_status"): [
+            ("_time", "timestamp with time zone"), ("device_id", "text"), ("tenant", "text"),
+            ("current_A", "double precision"), ("voltage_V", "double precision"),
+            ("latitude", "double precision"), ("longitude", "double precision"), ("altitude_m", "double precision"),
+        ],
+    }
+    m = guess_mapping(tables)
+    assert (m.table, m.time, m.device, m.current, m.voltage) == (
+        "traffic_device_status", "_time", "device_id", "current_A", "voltage_V")
+    assert (m.current_factor, m.voltage_factor) == (1000.0, 1000.0)
+    assert m.optional == {"latitude": "latitude", "longitude": "longitude", "altitude_m": "altitude_m", "tenant": "tenant"}
+
+
+def test_guess_mapping_without_units_or_device():
+    m = guess_mapping({("public", "messwerte"): [("ts", "timestamp"), ("current", "real"), ("voltage", "real")]})
+    assert m.device is None and m.current_factor is None and m.voltage_factor is None
+
+
+def test_guess_mapping_none_when_no_table_fits():
+    assert guess_mapping({("public", "users"): [("id", "integer")]}) is None

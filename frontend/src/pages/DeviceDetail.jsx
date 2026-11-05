@@ -11,7 +11,15 @@ const RANGES = [
   { hours: 24, label: '24 Std.' },
   { hours: 24 * 7, label: '7 Tage' },
   { hours: 24 * 30, label: '30 Tage' },
+  { hours: 'all', label: 'Gesamt' },
 ]
+
+// whole history of the device (API maximum: one year)
+function allHours(device) {
+  if (!device.first_seen || !device.last_seen) return 24
+  const h = Math.ceil((new Date(device.last_seen) - new Date(device.first_seen)) / 3600e3) + 1
+  return Math.min(Math.max(h, 24), 24 * 365)
+}
 
 function statusText(d, rules) {
   const crit = rules?.critical_below_percent ?? 20
@@ -25,8 +33,9 @@ function statusText(d, rules) {
 }
 
 function HistoryCard({ device, rules }) {
-  const [hours, setHours] = useState(24 * 7)
+  const [range, setRange] = useState(24 * 7)
   const [metric, setMetric] = useState('soc')
+  const hours = range === 'all' ? allHours(device) : range
   const { data, error } = usePolling(() => api.history(device.device_id, hours), [device.device_id, hours])
 
   const pts = data?.points ?? []
@@ -45,7 +54,7 @@ function HistoryCard({ device, rules }) {
           </div>
           <div className="seg small" role="group" aria-label="Zeitraum">
             {RANGES.map((r) => (
-              <button key={r.hours} type="button" aria-pressed={hours === r.hours} onClick={() => setHours(r.hours)}>{r.label}</button>
+              <button key={r.hours} type="button" aria-pressed={range === r.hours} onClick={() => setRange(r.hours)}>{r.label}</button>
             ))}
           </div>
         </div>

@@ -57,6 +57,20 @@ class Collector:
             self.settings.mqtt_topic,
         )
 
+    def on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
+        for rc in reason_codes:
+            if rc.is_failure:
+                # e.g. the broker's ACL does not allow this topic for our user
+                log.error("broker refused subscription to %r: %s", self.settings.mqtt_topic, rc)
+            else:
+                log.info("subscription confirmed (granted %s)", rc)
+
+    def on_connect_fail(self, client, userdata):
+        log.warning(
+            "cannot reach MQTT broker %s:%s (DNS, firewall, TLS or credentials?) - retrying",
+            self.settings.mqtt_host, self.settings.mqtt_port,
+        )
+
     def on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         log.warning("MQTT disconnected (%s), paho will reconnect", reason_code)
 
@@ -81,6 +95,8 @@ def build_client(settings: Settings, collector: Collector) -> mqtt.Client:
     client.reconnect_delay_set(min_delay=1, max_delay=60)
     client.on_connect = collector.on_connect
     client.on_disconnect = collector.on_disconnect
+    client.on_subscribe = collector.on_subscribe
+    client.on_connect_fail = collector.on_connect_fail
     client.on_message = collector.on_message
     return client
 

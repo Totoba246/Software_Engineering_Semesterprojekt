@@ -176,3 +176,33 @@ def test_end_to_end_publisher_broker_collector_db(db_url, db):
     assert collector.stats["rejected"] == 3
     assert db.execute("SELECT count(*) FROM measurements").fetchone()[0] == 12
     assert db.execute("SELECT count(*) FROM devices").fetchone()[0] == 3
+
+
+# --- Import from a foreign PostgreSQL (history DB) --------------------------------
+def test_import_history_detects_columns_and_units(db_url, db):
+    db.execute("DROP SCHEMA IF EXISTS src CASCADE")
+    db.execute("CREATE SCHEMA src")
+    db.execute('CREATE TABLE src.signals ("_time" timestamp, device_id text, tenant text, '
+               '"current_A" float8, "voltage_V" float8, latitude float8, longitude float8)')
+    db.execute("INSERT INTO src.signals VALUES "
+               "('2026-03-19 08:50:50', 'TSN-002', 'dieringer-stark', 0.551, 11.276, 48.2, 8.6), "
+               "('2026-03-19 08:53:50', 'TSN-002', 'dieringer-stark', 0.595, 11.304, NULL, NULL), "
+               "('2026-03-19 08:56:50', 'TSN-002', 'dieringer-stark', 0.6, 0, NULL, NULL)")
+    db.execute("CREATE TABLE src.raw (ts timestamptz, current float8, voltage float8)")
+    db.execute("INSERT INTO src.raw VALUES ('2026-03-20 10:00:00+00', 600, 11800)")
+    try:
+        assert import_data.main(["history", "--source-dsn", db_url, "--table", "src.signals",
+                                 "--database-url", db_url]) == 0
+        assert import_data.main(["history", "--source-dsn", db_url, "--table", "raw", "--device-id", "OLD-1",
+                                 "--database-url", db_url]) == 0
+        rows = db.execute("SELECT device_id, measured_at, current_ma, voltage_mv, latitude FROM measurements "
+                          "ORDER BY measured_at").fetchall()
+    finally:
+        db.execute("DROP SCHEMA src CASCADE")
+    assert len(rows) == 3  # the 0 V row is skipped
+    assert rows[0][0] == "TSN-002"
+    assert rows[0][1] == datetime(2026, 3, 19, 8, 50, 50, tzinfo=timezone.utc)  # naive = UTC
+    assert rows[0][2] == pytest.approx(551.0) and rows[0][3] == pytest.approx(11276.0)
+    assert rows[0][4] == 48.2
+    assert rows[2][:1] == ("OLD-1",) and rows[2][2:4] == (600.0, 11800.0)  # unit guessed from values
+    assert db.execute("SELECT tenant FROM devices WHERE device_id='TSN-002'").fetchone()[0] == "dieringer-stark"
