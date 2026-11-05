@@ -4,6 +4,12 @@ This page explains **every part of the system**: what it is, where it runs,
 which port it uses and how the parts talk to each other.
 If you only read one document, read this one.
 
+> **Running it on your own computer (current setup)?** Everything below is the same,
+> only the address changes: instead of `212.227.31.76` use **`localhost`**
+> (e.g. http://localhost:20800), and you don't need SSH except for reading the course
+> history database, which `python start.py check-history` does for you.
+> Step by step: [Run-locally.md](Run-locally.md).
+
 ---
 
 ## 1. The idea in three sentences
@@ -31,18 +37,18 @@ web page how full each battery is, so a technician can swap it before it's empty
  └──────────┬───────────────────┘
             │ (2) forwards every message to everyone who subscribed
             ▼
- ╔═════════════════════════════════════════════════════════════════════════════╗
- ║ COURSE SERVER 212.227.31.76   (we log in with: ssh tinf25d-llv@212.227.31.76) ║
+ ╔═══════════════════════════════════════════════════════════════════════════════╗
+ ║ YOUR LAPTOP (localhost) - or later the COURSE SERVER 212.227.31.76            ║
  ║                                                                               ║
  ║   Our Docker containers (folder ~/batterywatch, started by docker compose):   ║
  ║                                                                               ║
  ║   ┌─────────────┐ (3) saves  ┌──────────────┐                                 ║
- ║   │ collector   │──────────▶│ db           │◀──── server port 20832          ║
+ ║   │ collector   │──────────▶│ db           │◀──── server port 20832           ║
  ║   │ (Python)    │  messages │ (PostgreSQL) │      (only from the server /     ║
  ║   └─────────────┘           └──────┬───────┘       via SSH tunnel)            ║
  ║                                    │ (5) reads                                ║
  ║                             ┌──────┴───────┐                                  ║
- ║                             │ api          │◀──── server port 20801          ║
+ ║                             │ api          │◀──── server port 20801           ║
  ║                             │ (Python)     │      (only from the server)      ║
  ║                             └──────▲───────┘                                  ║
  ║                                    │ (4b) /api/... is forwarded               ║

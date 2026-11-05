@@ -1,3 +1,13 @@
+# Describes our Python package "batterywatch" (the folder backend/batterywatch).
+# `pip install -e .` (run in backend/, done automatically by
+# `pip install -r requirements-dev.txt`) registers that folder with your Python,
+# so `import batterywatch` works from anywhere - also when you press "Run"
+# on a single file in VS Code. "-e" = "editable": code changes apply immediately.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "batterywatch"
 version = "0.1.0"
@@ -10,6 +20,7 @@ include = ["batterywatch*"]
 [tool.setuptools.package-data]
 batterywatch = ["schema.sql"]
 
+# Settings for the test runner pytest (run `python -m pytest` in backend/)
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

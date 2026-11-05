@@ -1,0 +1,17 @@
+{
+  // VS Code settings for this project (only apply when this folder is open).
+
+  // Tests: open the "Testing" panel (flask icon on the left) and press "Run Tests".
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/backend",
+  "python.testing.pytestArgs": ["tests"],
+
+  // Lets VS Code find `import batterywatch` (no red underlines).
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+
+  // "Run Python File" on a file in backend/ can import batterywatch too.
+  "terminal.integrated.env.windows": { "PYTHONPATH": "${workspaceFolder}/backend" },
+  "terminal.integrated.env.linux": { "PYTHONPATH": "${workspaceFolder}/backend" },
+  "terminal.integrated.env.osx": { "PYTHONPATH": "${workspaceFolder}/backend" }
+}

@@ -226,7 +226,10 @@ class Publisher:
 
 def run_simulate(args, pub: Publisher) -> None:
     rng = random.Random(args.seed)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    # Round "now" down to the --step grid (e.g. full quarter hours). Then a restart
+    # produces the SAME history timestamps, which the database skips as duplicates,
+    # instead of piling up another 30 days of slightly shifted fake data.
+    now = datetime.fromtimestamp(time.time() // args.step * args.step, timezone.utc)
     nodes = make_nodes(args.devices, args.seed, anchor=now)
 
     def publish_all(at: datetime) -> None:

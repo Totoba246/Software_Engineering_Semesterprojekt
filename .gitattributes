@@ -1,0 +1,8 @@
+# Files that are used inside Linux containers must keep Unix line endings (LF),
+# even when the project is checked out on Windows (Git would otherwise convert
+# them to CRLF, which breaks shell scripts and can confuse config parsers).
+*.sh        text eol=lf
+*.conf      text eol=lf
+*.sql       text eol=lf
+Dockerfile  text eol=lf
+.env.example text eol=lf

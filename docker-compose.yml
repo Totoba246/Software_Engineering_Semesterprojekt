@@ -220,6 +220,26 @@ services:
       mqtt:
         condition: service_started
 
+  # ---------------------------------------------------------------------------
+  # tools: runs one-off commands, e.g. reading the course history database
+  # (`python start.py check-history` / `import-history`). Never runs on its own.
+  # "host.docker.internal" = YOUR computer as seen from inside the container,
+  # needed to reach the SSH tunnel that start.py opens on localhost:15432.
+  # ---------------------------------------------------------------------------
+  tools:
+    profiles: ["tools"]
+    build: ./backend
+    command: ["python", "-m", "batterywatch.tools.import_data", "--help"]
+    environment:
+      <<: *backend-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./docs/samples:/samples:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
 # Named storage areas managed by Docker (see "volumes:" above).
 volumes:
   db-data:      # all database contents
