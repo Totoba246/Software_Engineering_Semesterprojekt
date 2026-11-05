@@ -1,3 +1,13 @@
+/*
+ * THE FRAME OF THE WEB PAGE: header bar + which page to show for which address.
+ *
+ *   /               -> pages/Overview.jsx      (list of all devices + map)
+ *   /geraete/101    -> pages/DeviceDetail.jsx  (one device: battery, chart, messages)
+ *
+ * It also loads the device list (every 5 minutes, see usePolling.js) and the
+ * status rules (20 % / 50 % thresholds) once, and hands them to the pages.
+ */
+
 import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { api } from './api.js'

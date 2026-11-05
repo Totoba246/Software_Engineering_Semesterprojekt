@@ -1,5 +1,16 @@
 """Import existing (mock / historical) data directly into the BatteryWatch database.
 
+WHEN DO I NEED THIS?
+    Once, to copy OLD data into our database, e.g. the course's history database
+    (two discharge cycles of one node) or the sample CSV file. New live data
+    arrives by itself through the collector - no import needed for that.
+    On the server, deploy/import-history.sh runs this tool for you.
+
+WHERE DOES THE DATA GO?
+    Into the database given by DATABASE_URL (or --database-url), table
+    measurements, marked with source='import'. Running it twice is harmless:
+    rows that already exist (same device + same time) are skipped.
+
 This bypasses MQTT and is meant to pre-fill the database, e.g. with the recorded
 sample data, so the frontend has a long history to show right away.
 

@@ -135,7 +135,7 @@ docker compose --profile test up -d publisher   # simulierte TrafficNodes
 
 Frontend: http://localhost:20800 · API-Doku: http://localhost:20801/docs
 
-Auf dem Kursserver: [docs/Server.md](docs/Server.md) · Details (Testdaten, Import, Live-Broker, Tests): [docs/Entwicklung.md](docs/Entwicklung.md) ·
+**Neu hier? Zuerst [docs/How-it-works.md](docs/How-it-works.md) lesen** (alle Teile, Ports und Wege erklärt) · Auf dem Kursserver: [docs/Server.md](docs/Server.md) · Details (Testdaten, Import, Live-Broker, Tests): [docs/Entwicklung.md](docs/Entwicklung.md) ·
 [MQTT-Vertrag](docs/MQTT-Vertrag.md) · [Statusregeln](docs/Statusregeln.md)
 
 ---

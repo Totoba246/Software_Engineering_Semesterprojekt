@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# =============================================================================
+#  Copies the OLD measurements from the course database into OUR database.
+# =============================================================================
+#  Run it ON THE SERVER, in the batterywatch folder, after setup-server.sh.
+#
+#  The two databases:
+#    course database  = 127.0.0.1:5432 on the server, database "measurements"
+#                       (belongs to the course, we only READ from it)
+#    our database     = 127.0.0.1:20832 on the server (our "db" container)
+#  Both are only reachable from the server itself - that's why this must run there.
+#
+#  It asks for the course database password, then starts a short-lived
+#  container with our import tool (backend/batterywatch/tools/import_data.py).
+# =============================================================================
+#
 # Copies the historical measurements from the course's history database
 # (PostgreSQL on the server, 127.0.0.1:5432) into our own BatteryWatch database.
 #

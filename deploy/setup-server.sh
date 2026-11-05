@@ -1,15 +1,31 @@
 #!/usr/bin/env bash
-# Sets up and starts BatteryWatch on the course server (or any Docker host).
+# =============================================================================
+#  Sets up and starts BatteryWatch on the course server (or any Docker host).
+# =============================================================================
+#  HOW TO USE (type these on your laptop, one after another):
+#    ssh tinf25d-llv@212.227.31.76        # log into the server (asks for the SSH password)
+#    git clone -b claude/sleepy-brown-bvz71m https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
+#                                         # download our code into the folder "batterywatch"
+#    cd batterywatch                      # go into that folder
+#    ./deploy/setup-server.sh             # run this script
 #
-#   ssh tinf25d-llv@212.227.31.76
-#   git clone -b <branch> https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
-#   cd batterywatch && ./deploy/setup-server.sh
+#  WHAT IT DOES
+#   1. checks that Docker is available on the server
+#   2. FIRST RUN ONLY: creates the settings file .env from .env.example:
+#        - asks for the MQTT password (course broker mqtt.ti-labs.ai)
+#        - invents a random password for OUR database
+#        - asks whether the database should be reachable from the internet
+#      .env stays on the server and is never uploaded to GitHub.
+#   3. builds and starts all containers (docker compose up -d --build)
+#   4. waits until the API answers and prints the addresses
 #
-# First run: asks for the MQTT password, generates a database password and writes .env.
-# Later runs: keep .env and just rebuild/restart (e.g. after `git pull`).
-set -euo pipefail
-cd "$(dirname "$0")/.."
+#  Later runs (e.g. after `git pull` for a new version) keep .env and just
+#  rebuild + restart. Your data in the database is kept.
+# =============================================================================
+set -euo pipefail          # stop at the first error instead of carrying on
+cd "$(dirname "$0")/.."    # go to the project folder (one level above deploy/)
 
+# say = print a bold heading, die = print a red error and stop
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mFEHLER: %s\033[0m\n' "$*" >&2; exit 1; }
 

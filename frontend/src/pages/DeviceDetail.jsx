@@ -1,3 +1,14 @@
+/*
+ * PAGE "Gerätedetails" (address /geraete/<id>, e.g. /geraete/101)
+ *
+ * Loads its own data from the API, every 5 minutes:
+ *   GET /api/devices/<id>             -> big battery %, facts on the right
+ *   GET /api/devices/<id>/history     -> the chart (HistoryCard)
+ *   GET /api/devices/<id>/messages    -> list of the last MQTT messages (MessagesCard)
+ * If the newest message was rejected (e.g. voltage_mV = 5368709120), a red
+ * box at the top explains why.
+ */
+
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'

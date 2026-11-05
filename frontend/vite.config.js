@@ -1,3 +1,9 @@
+/*
+ * Settings for "Vite", the development tool that builds the web page.
+ *   npm run dev    -> development server on http://localhost:5173 (reloads on every save)
+ *   npm run build  -> finished files in dist/ (what the Docker image serves with nginx)
+ */
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 

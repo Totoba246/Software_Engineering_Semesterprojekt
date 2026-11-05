@@ -1,6 +1,30 @@
-"""REST/JSON API for the frontend (ADR-06).
+"""The API: answers the web page's questions with data from the database (ADR-06).
 
-Run with:  uvicorn batterywatch.api.main:app --host 0.0.0.0 --port 8000
+WHAT IS A "REST API"?
+    A small web server that returns DATA (JSON) instead of web pages.
+    The web page asks e.g.   GET /api/devices
+    and gets back            [{"device_id": "101", "soc_percent": 35.2, "status": "niedrig", ...}, ...]
+
+WHERE DOES IT RUN?
+    Container "api", port 8000 inside Docker (= port 20801 on the server, only
+    reachable from the server itself). The browser doesn't call it directly:
+    nginx in the frontend container forwards http://<server>:20800/api/... here.
+    Try it on the server:  curl http://127.0.0.1:20801/api/devices
+    Clickable documentation of all endpoints: http://127.0.0.1:20801/docs
+
+THE ENDPOINTS (= addresses you can ask), all defined in create_app() below
+    GET /api/health                    "are you alive and is the database reachable?"
+    GET /api/status-rules              the thresholds (20 %, 50 %, curve) for the legend
+    GET /api/devices                   all devices with current battery level and status
+    GET /api/devices/101               one device with more details (trend, averages)
+    GET /api/devices/101/history       data for the chart (averaged per time slot)
+    GET /api/devices/101/messages      the last received MQTT messages, also rejected ones
+
+UNITS
+    The database stores mV / mA (like the nodes send). This file converts to
+    VOLTS and AMPERES (divide by 1000) because that's easier to read on screen.
+
+It only READS the database; writing is done by the collector.
 """
 
 from __future__ import annotations
@@ -23,13 +47,18 @@ from . import queries
 
 log = logging.getLogger("batterywatch.api")
 
-# Candidate bucket sizes for the history chart (seconds). The smallest one that
-# yields at most MAX_POINTS points is used. Nodes send every ~3 min = 180 s.
+# The chart can't draw thousands of points nicely, so measurements are grouped into
+# time slots ("buckets") and averaged. Candidate slot sizes in seconds (3 min ... 1 day);
+# the smallest one that yields at most MAX_POINTS points is used.
+# Example: 7 days = 604800 s / 1800 s = 336 points -> 30-minute slots.
 BUCKETS = [180, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
 MAX_POINTS = 500
 
 
 # --- Response models ------------------------------------------------------
+# These classes describe the exact shape of the JSON answers. FastAPI uses them
+# to convert our data to JSON and to generate the documentation at /docs.
+
 class StatusRules(BaseModel):
     critical_below_percent: float
     low_below_percent: float
@@ -47,21 +76,23 @@ class Position(BaseModel):
 
 
 class DeviceSummary(BaseModel):
+    """One device in the overview list (answer of GET /api/devices)."""
+
     device_id: str
     name: str
     tenant: str | None
     device_type: str
     category: str | None
     location: str | None
-    last_seen: datetime | None
+    last_seen: datetime | None  # time of the newest VALID measurement
     minutes_since_last_seen: float | None
-    stale: bool
+    stale: bool  # True = no valid measurement for STALE_AFTER_MINUTES (shown in red)
     battery_voltage_v: float | None  # smoothed U_bat
     last_battery_voltage_v: float | None  # newest single reading
     current_a: float | None  # newest single reading
     temperature_c: float | None  # newest single reading
-    soc_percent: float | None
-    status: battery.BatteryStatus
+    soc_percent: float | None  # charge level 0-100 % (from the smoothed voltage)
+    status: battery.BatteryStatus  # "ok" / "niedrig" / "krit" / "unbekannt"
     position: Position | None
     # newest MQTT message, also if it was rejected (e.g. implausible voltage)
     last_message_at: datetime | None
@@ -70,6 +101,8 @@ class DeviceSummary(BaseModel):
 
 
 class Message(BaseModel):
+    """One received MQTT message (answer of GET /api/devices/{id}/messages)."""
+
     received_at: datetime
     topic: str
     accepted: bool
@@ -78,6 +111,8 @@ class Message(BaseModel):
 
 
 class DeviceDetail(DeviceSummary):
+    """Everything from DeviceSummary plus extra figures for the detail page."""
+
     measurement_count: int
     first_seen: datetime | None
     avg_current_a_24h: float | None
@@ -85,13 +120,15 @@ class DeviceDetail(DeviceSummary):
 
 
 class HistoryPoint(BaseModel):
-    t: datetime
+    """One point in the chart = the average of one time slot."""
+
+    t: datetime  # start of the time slot
     battery_voltage_v: float
     battery_voltage_min_v: float
     battery_voltage_max_v: float
     current_a: float
     soc_percent: float
-    samples: int
+    samples: int  # how many measurements were averaged
 
 
 class History(BaseModel):
@@ -104,12 +141,21 @@ class History(BaseModel):
 
 # --- App setup ------------------------------------------------------------
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the web application with all its endpoints.
+
+    (A function instead of top-level code so the tests can create an app
+    with their own settings, e.g. a separate test database.)
+    """
     settings = settings or get_settings()
 
+    # Runs once at start-up (before "yield") and once at shutdown (after it).
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # make sure the tables exist
         with psycopg.connect(settings.database_url, autocommit=True) as conn:
             ensure_schema(conn)
+        # A "pool" keeps up to 10 database connections open and lends them to
+        # incoming requests - much faster than connecting for every request.
         pool = ConnectionPool(
             settings.database_url, min_size=1, max_size=10, kwargs={"row_factory": dict_row}, open=True
         )
@@ -121,19 +167,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pool.close()
 
     app = FastAPI(title="BatteryWatch API", version="0.1.0", lifespan=lifespan)
+    # CORS: browser rule about which web pages may call this API. Only relevant
+    # in development (page on :5173, API on :8000); in Docker both come via nginx.
     app.add_middleware(
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET"], allow_headers=["*"]
     )
 
     def get_conn(request: Request):
+        """Borrow a database connection for one request (given back automatically)."""
         with request.app.state.pool.connection() as conn:
             yield conn
 
     def summarize(row: dict, now: datetime) -> dict:
+        """Turn one database row (mV, mA, timestamps) into the answer for the web page
+        (V, A, minutes ago, percentage and status)."""
         s: Settings = settings
-        avg_mv = row["avg_battery_voltage_mv"]
-        volts = round(avg_mv / 1000, 3) if avg_mv is not None else None
-        soc = battery.state_of_charge(volts, s.soc_curve)
+        avg_mv = row["avg_battery_voltage_mv"]  # average of the last 60 min, in mV
+        volts = round(avg_mv / 1000, 3) if avg_mv is not None else None  # mV -> V
+        soc = battery.state_of_charge(volts, s.soc_curve)  # V -> %
         last_seen = row["last_seen"]
         minutes = (now - last_seen).total_seconds() / 60 if last_seen else None
         last_msg = row["last_message_at"]
@@ -171,6 +222,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     def fetch_states(conn, device_id: str | None = None) -> list[dict]:
+        """Current state of all devices, or of one device if ``device_id`` is given."""
         where = "WHERE d.device_id = %(device_id)s" if device_id else ""
         rows = conn.execute(
             queries.DEVICE_STATE.format(where=where),
@@ -180,6 +232,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [summarize(r, now) for r in rows]
 
     # --- Routes -----------------------------------------------------------
+    # "@app.get(path)" = "when someone requests this address, run this function".
+    # "{device_id}" in the path is filled from the address, e.g. /api/devices/101.
+    # "conn=Depends(get_conn)" = FastAPI hands the function a database connection.
+
     @app.get("/api/health")
     def health(conn=Depends(get_conn)):
         conn.execute("SELECT 1")
@@ -225,11 +281,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/devices/{device_id}/history", response_model=History)
     def get_history(
+        # e.g. /api/devices/101/history?hours=168  (168 h = 7 days)
         device_id: str,
         hours: int = Query(168, ge=1, le=24 * 365, description="Length of the time range in hours"),
         end: datetime | None = Query(None, description="End of the range; default = last measurement"),
         conn=Depends(get_conn),
     ):
+        # The time range ends at the device's NEWEST measurement (not "now"), so
+        # old/imported data still shows a chart instead of an empty one.
         if end is None:
             row = conn.execute(queries.LAST_SEEN, {"device_id": device_id}).fetchone()
             if row["last_seen"] is None:
@@ -242,6 +301,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         start = end - timedelta(hours=hours)
+        # pick the time slot size (see BUCKETS at the top)
         bucket = next((b for b in BUCKETS if hours * 3600 / b <= MAX_POINTS), BUCKETS[-1])
         rows = conn.execute(
             queries.HISTORY, {"device_id": device_id, "bucket_seconds": bucket, "start": start, "end": end}
@@ -270,5 +330,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
+# The object the web server "uvicorn" runs (see the CMD in backend/Dockerfile:
+# "uvicorn batterywatch.api.main:app" = file batterywatch/api/main.py, variable app).
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = create_app()

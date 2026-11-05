@@ -1,4 +1,17 @@
-"""Test publisher (A05): sends TrafficNode-like messages to the MQTT broker.
+"""Test publisher (A05): pretends to be traffic light nodes and sends FAKE messages.
+
+WHY?
+    Real nodes send rarely (node 101: every 15 min) and currently only garbage
+    values. With this script we can test everything right away:
+        this script --MQTT--> broker --> collector --> database --> API --> web page
+    If fake devices SIM-001, SIM-002, ... show up on the web page, the whole
+    chain works.
+
+WHERE DOES IT SEND TO?
+    The broker given by MQTT_HOST / MQTT_PORT (or --host / --port). In Docker
+    that is our own test broker "mqtt" (container "publisher", docker-compose.yml).
+    NEVER run it against the shared course broker mqtt.ti-labs.ai - other groups
+    would receive our fake data.
 
 Stands in for real nodes (only node 101 is sending at the moment) and lets us test
 the complete path  publisher -> broker -> collector -> DB -> API -> UI.

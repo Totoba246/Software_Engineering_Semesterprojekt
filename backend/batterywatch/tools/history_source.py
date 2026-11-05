@@ -1,6 +1,12 @@
 """Read measurements from another PostgreSQL database whose layout we don't control
 (e.g. the course's history database), by guessing which columns mean what.
 
+WHERE IS THAT DATABASE?
+    The course's history PostgreSQL runs on the course server itself at
+    127.0.0.1:5432 (database "measurements"). It is only reachable from the
+    server, so deploy/import-history.sh runs the import ON the server.
+    We only READ from it, never write.
+
 The guess is based on column names (``_time``, ``voltage_V``, ``current_mA``, ...)
 and, where the name has no unit, on the size of the values (11.3 -> volts, 11300 -> mV).
 If no table fits, ``describe()`` prints the layout so the mapping can be given by hand

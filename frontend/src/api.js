@@ -1,4 +1,15 @@
-// Thin wrapper around the BatteryWatch REST API (see backend/batterywatch/api/main.py).
+/*
+ * ALL CONVERSATIONS WITH THE BACKEND go through this file.
+ *
+ * The page asks for data with fetch('/api/...'). Where does that request go?
+ *   - on the server (Docker): the same address the page came from
+ *     (http://<server>:20800/api/...), and nginx forwards it to the api container
+ *     (see frontend/nginx.conf)
+ *   - during development (npm run dev): Vite forwards it to localhost:8000
+ *     (see vite.config.js)
+ * The answers are JSON; their exact shape is documented at /docs of the API
+ * and in backend/batterywatch/api/main.py.
+ */
 
 async function get(path) {
   const res = await fetch(path, { headers: { Accept: 'application/json' } })

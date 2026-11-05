@@ -1,4 +1,13 @@
-/* Styles adopted from the GUI draft (batterywatch-entwurf.html). */
+/*
+ * HOW THE PAGE LOOKS (colors, spacing, layout). Taken over from the GUI draft
+ * batterywatch-entwurf.html.
+ *  - Colors are defined ONCE as variables (--red, --green, ...) in :root below
+ *    and used everywhere as var(--red). The second block switches them to dark
+ *    colors when the computer is set to dark mode.
+ *  - Status colors: class s-krit = red, s-niedrig = yellow, s-ok = green,
+ *    s-unbekannt = grey. The JSX files put these classes on elements.
+ *  - @media (max-width: ...) blocks = adjustments for small screens (phones).
+ */
 :root {
   --bg: #F2F3F1; --surface: #FFFFFF; --hover: #EDF1F6; --ink: #1F2428; --ink-soft: #4A5258; --muted: #5E666D; --line: #D9DDD8;
   --accent: #1C5DA6; --on-accent: #FFFFFF;

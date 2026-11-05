@@ -1,5 +1,9 @@
 """Reader for the recorded sample data (docs/samples/traffic_devices_signals.csv).
 
+This CSV file contains 2229 real messages of one node (TSN-002, March 2026,
+every 3 minutes). NOTE: unlike the live nodes, this file is in VOLTS and
+AMPERES (voltage_V, current_A) - the reader converts to mV/mA (x 1000).
+
 The file is an InfluxDB export with one row per TrafficNode message, e.g.::
 
     _time,_measurement,device_id,device_type,serial,tenant,topic,altitude_m,current_A,

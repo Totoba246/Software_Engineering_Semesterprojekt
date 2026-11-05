@@ -1,4 +1,14 @@
-"""SQL used by the REST API (read-only)."""
+"""The SQL questions the API asks the database (read-only).
+
+Kept in one file so you can read and test them separately, e.g. by pasting
+them into psql / DBeaver (replace %(name)s with a value first).
+
+Quick SQL glossary for these queries:
+    LEFT JOIN LATERAL (...) x ON true  -> "for every device, run this sub-query"
+    ORDER BY measured_at DESC LIMIT 1  -> "only the newest row"
+    avg(), min(), max(), count()       -> average / smallest / biggest / number of rows
+    %(name)s                           -> placeholder, filled in safely by psycopg
+"""
 
 # Latest state of every device:
 #  - last:  newest measurement (last_seen, current)

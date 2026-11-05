@@ -1,9 +1,26 @@
-"""MQTT contract: topic layout and payload validation (see docs/MQTT-Vertrag.md).
+"""The "MQTT contract": what a valid node message looks like (docs/MQTT-Vertrag.md).
 
-Topic (live broker mqtt.ti-labs.ai):   traffic-nodes/<device_id>/measurements
-Topic (older recordings, still read):  traffic-device/<tenant>/<device_type>/<device_id>/status
-Payload: {"current_mA": 551.0, "voltage_mV": 11276.0, "temperature_C": 17.0, "lat": 48.2,
-          "lon": 8.6, "altitude_m": 609.6, "satellites": 7, "time": "2026-03-19T08:50:50Z"}
+WHAT THIS FILE DOES
+    Every MQTT message has two parts:
+      - the TOPIC (the "address" it was sent to), e.g.
+            traffic-nodes/101/measurements          <- live broker mqtt.ti-labs.ai
+            traffic-device/<tenant>/<type>/<id>/status   <- older recordings, still accepted
+        The device id (here "101") is taken FROM THE TOPIC.
+      - the PAYLOAD (the content), a JSON text like
+            {"current_mA": 551.0, "voltage_mV": 11276.0, "temperature_C": 17.0,
+             "lat": 48.2, "lon": 8.6, "altitude_m": 609.6, "satellites": 7,
+             "time": "2026-03-19T08:50:50Z"}
+        All values in MILLIvolts / MILLIamperes, as the nodes send them.
+
+    ``parse_message(topic, payload)`` checks both and either returns a clean
+    ``Measurement`` or raises ``ContractError`` with a German reason, e.g.
+    "voltage_mV = 5368709120 ist größer als erlaubt (max. 60000)".
+
+WHO USES IT
+    - collector/main.py: checks every received message before saving it.
+    - tools/test_publisher.py: ``build_topic``/``build_payload`` create fake
+      messages in exactly this format.
+    Tests: tests/test_contract.py
 """
 
 from __future__ import annotations
@@ -15,9 +32,12 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-# Default subscriptions of the collector (MQTT_TOPIC overrides them)
+# Default subscriptions of the collector (MQTT_TOPIC overrides them).
+# "+" is an MQTT wildcard for exactly one level, so "traffic-nodes/+/measurements"
+# matches traffic-nodes/101/measurements, traffic-nodes/102/measurements, ...
 DEFAULT_TOPICS = "traffic-nodes/+/measurements,traffic-device/+/+/+/status"
 DEFAULT_DEVICE_TYPE = "trafficnode"
+# Allowed characters in ids taken from the topic: letters, digits, _ . -  (max. 64)
 _ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
@@ -27,17 +47,21 @@ class ContractError(ValueError):
 
 @dataclass(frozen=True)
 class TopicInfo:
+    """What we learn from the topic alone (before even looking at the content)."""
+
     device_id: str
     tenant: str | None = None
     device_type: str = DEFAULT_DEVICE_TYPE
 
 
 def build_topic(device_id: str) -> str:
+    """Topic a node with this id publishes to (same layout as the live broker)."""
     return f"traffic-nodes/{device_id}/measurements"
 
 
 def parse_topic(topic: str) -> TopicInfo:
-    parts = topic.split("/")
+    """Read the device id (and for old topics tenant/type) from the topic text."""
+    parts = topic.split("/")  # "traffic-nodes/101/measurements" -> ["traffic-nodes", "101", "measurements"]
     if len(parts) == 3 and parts[0] == "traffic-nodes" and parts[2] == "measurements":
         info = TopicInfo(device_id=parts[1])
     elif len(parts) == 5 and parts[0] == "traffic-device" and parts[4] == "status":
@@ -52,23 +76,32 @@ def parse_topic(topic: str) -> TopicInfo:
 
 
 class TelemetryPayload(BaseModel):
-    """JSON body published by a TrafficNode. Unknown extra fields are ignored."""
+    """JSON body published by a TrafficNode. Unknown extra fields are ignored.
+
+    Each line below is one field: its type and the allowed range (ge = >=, gt = >,
+    le = <=). The library "pydantic" checks all of them in one go and reports
+    every problem it finds. ``float | None`` means "a number or null".
+    """
 
     model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
 
+    # Current in MILLIamperes (the traffic light draws about 500-700 mA).
     current_mA: float = Field(ge=-100_000, le=100_000)
+    # Voltage in MILLIvolts, measured behind the shunt (a 12 V battery = about 12000 mV).
     # 0 mV is what an unconfigured node sends (see docs/samples/sample_msg.json).
     # The node is powered by the battery it measures, so 0 V cannot be real.
     # Above 60 V is a read error (seen live: 5368709120 mV = 1.25 * 2^32 from node 101).
     voltage_mV: float = Field(gt=0, le=60_000)
+    # GPS position (null when the node has no satellite fix)
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
     altitude_m: float | None = Field(default=None, ge=-500, le=10_000)
     satellites: int | None = Field(default=None, ge=0, le=100)
-    temperature_C: float | None = Field(default=None, ge=-60, le=150)
+    temperature_C: float | None = Field(default=None, ge=-60, le=150)  # degrees Celsius
     # ISO 8601 string or Unix epoch (seconds or milliseconds); null = use receive time.
     time: datetime | None = None
 
+    # Extra check that looks at two fields together (runs after the single-field checks).
     @model_validator(mode="after")
     def _position_complete(self) -> "TelemetryPayload":
         if (self.lat is None) != (self.lon is None):
@@ -81,7 +114,11 @@ class TelemetryPayload(BaseModel):
 
 @dataclass(frozen=True)
 class Measurement:
-    """A validated measurement, ready to be stored."""
+    """A validated measurement, ready to be stored (one row in the measurements table).
+
+    Note the lower-case field names: these are OUR names (database columns),
+    the payload above uses the node's names (current_mA, voltage_mV, ...).
+    """
 
     device_id: str
     tenant: str | None
@@ -96,6 +133,7 @@ class Measurement:
     temperature_c: float | None = None
 
 
+# Translation of pydantic's error codes into short German texts for the web page.
 _ERROR_TEXT = {
     "missing": "fehlt",
     "float_parsing": "ist keine Zahl",
@@ -127,18 +165,23 @@ def _describe(err: dict) -> str:
 
 def parse_message(topic: str, payload: bytes | str, received_at: datetime | None = None) -> Measurement:
     """Validate topic and payload; raise ContractError if anything is wrong."""
+    # 1. topic -> device id
     info = parse_topic(topic)
+    # 2. text -> JSON object
     try:
         data = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ContractError(f"kein gültiges JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ContractError("Nachricht muss ein JSON-Objekt sein")
+    # 3. check every field against the rules in TelemetryPayload
     try:
         body = TelemetryPayload.model_validate(data)
     except ValidationError as exc:
         raise ContractError("; ".join(_describe(e) for e in exc.errors())) from exc
 
+    # 4. timestamp: the node's "time" if it sent one, otherwise "now" (node 101 sends null).
+    #    Everything is stored in UTC; the web page converts to German time.
     received_at = received_at or datetime.now(timezone.utc)
     measured_at = body.time or received_at
     if measured_at.tzinfo is None:

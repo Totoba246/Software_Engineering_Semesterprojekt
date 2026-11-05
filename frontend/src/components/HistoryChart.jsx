@@ -1,3 +1,11 @@
+/*
+ * THE CHART on the detail page (library "Recharts").
+ * Draws the averaged values from GET /api/devices/<id>/history:
+ *   line = average per time slot, light band = min..max in that slot.
+ * Night hours (21-6 Uhr, German time) are shaded: the traffic light dims at
+ * night, draws less current, and the voltage forms "plateaus" - that's normal.
+ */
+
 import { useMemo } from 'react'
 import {
   Area,

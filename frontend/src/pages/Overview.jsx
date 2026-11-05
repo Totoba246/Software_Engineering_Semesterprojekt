@@ -1,3 +1,11 @@
+/*
+ * PAGE "Übersicht" (address /): list of all devices on the left, map on the right.
+ *
+ * Gets the device list from App.jsx (which loads it from GET /api/devices).
+ * Everything else happens here in the browser: search, filter by status
+ * (Kritisch / Niedrig / Gut), sort. Clicking a device opens /geraete/<id>.
+ */
+
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BatteryLevel, Legend } from '../components/Battery.jsx'

@@ -1,5 +1,8 @@
-// Client-side helpers mirroring backend/batterywatch/battery.py (for chart bands only;
-// the authoritative status always comes from the API).
+/*
+ * Same volts -> percent calculation as backend/batterywatch/battery.py.
+ * Only used to draw the light band (min/max) in the chart; the real status
+ * of a device always comes from the API.
+ */
 
 export function socFromVoltage(volts, curve) {
   if (volts == null || !curve?.length) return null
