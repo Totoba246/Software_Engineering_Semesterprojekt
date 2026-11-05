@@ -1,0 +1,23 @@
+# =============================================================================
+#  DEPLOY STEP 3 of 3 (part b): WHEN the server updates itself
+# =============================================================================
+#  (Sketch: the circular arrow at "systemd")
+#
+#  Starts batterywatch-update.service 2 minutes after the server boots and then
+#  every 5 minutes. So a push to main is live on the server roughly
+#  5-10 minutes later (tests + image build on GitHub + up to 5 min waiting).
+#
+#  This is option (1) of the sketch: the server ASKS regularly ("polling").
+#  Advantages: no open port and no server password stored on GitHub.
+#
+#  Check:  systemctl --user list-timers      (shows when it runs next)
+# =============================================================================
+[Unit]
+Description=BatteryWatch: check for new images every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

@@ -9,18 +9,23 @@
 #    cd batterywatch                      # go into that folder
 #    ./deploy/setup-server.sh             # run this script
 #
-#  WHAT IT DOES
+#  WHAT IT DOES (deployment as in the professor's sketch, see docs/Server.md)
 #   1. checks that Docker is available on the server
 #   2. FIRST RUN ONLY: creates the settings file .env from .env.example:
 #        - asks for the MQTT password (course broker mqtt.ti-labs.ai)
 #        - invents a random password for OUR database
 #        - asks whether the database should be reachable from the internet
 #      .env stays on the server and is never uploaded to GitHub.
-#   3. builds and starts all containers (docker compose up -d --build)
-#   4. waits until the API answers and prints the addresses
+#      It also contains COMPOSE_FILE=docker-compose.server.yml, so every
+#      `docker compose` command here uses the server version.
+#   3. downloads the finished images from ghcr.io (built by GitHub, see
+#      .github/workflows/deploy.yml) - asks for a read-only token if needed
+#   4. starts all containers
+#   5. installs the systemd timer that checks for new images every 5 minutes
+#      (deploy/batterywatch-update.service + .timer)
+#   6. waits until the API answers and prints the addresses
 #
-#  Later runs (e.g. after `git pull` for a new version) keep .env and just
-#  rebuild + restart. Your data in the database is kept.
+#  Running it again is harmless: .env is kept, your data is kept.
 # =============================================================================
 set -euo pipefail          # stop at the first error instead of carrying on
 cd "$(dirname "$0")/.."    # go to the project folder (one level above deploy/)
@@ -79,9 +84,51 @@ else
   fi
   if grep -qx 'STALE_AFTER_MINUTES=30' .env; then set_env STALE_AFTER_MINUTES 45; fi
 fi
+# The server runs the finished images from ghcr.io (not docker-compose.yml, which builds).
+grep -q '^COMPOSE_FILE=' .env || set_env COMPOSE_FILE docker-compose.server.yml
 
-say "Baue und starte die Container (beim ersten Mal einige Minuten)"
-docker compose up -d --build
+say "Lade die fertigen Images von ghcr.io (von GitHub gebaut)"
+if ! docker compose pull 2>/tmp/batterywatch-pull.log; then
+  cat /tmp/batterywatch-pull.log
+  if grep -qiE "denied|unauthorized" /tmp/batterywatch-pull.log; then
+    echo
+    echo "ghcr.io sagt 'denied'. Zwei mögliche Gründe:"
+    echo "  a) GitHub hat die Images noch nicht gebaut -> auf GitHub unter 'Actions' prüfen,"
+    echo "     ob der Workflow 'Deploy' grün durchgelaufen ist (läuft nach jedem Push auf main)."
+    echo "     Dann hier Strg+C und das Skript später erneut starten."
+    echo "  b) Die Images sind privat. Dafür braucht es einen"
+    echo "NUR-LESE-Token (\"deploy-token [RO]\" in der Skizze):"
+    echo "  GitHub -> Settings -> Developer settings -> Personal access tokens (classic)"
+    echo "  -> Generate new token -> nur das Häkchen 'read:packages' setzen"
+    echo "(Alternative ohne Token: GitHub -> Packages -> batterywatch-backend/-frontend"
+    echo " -> Package settings -> Change visibility -> Public)"
+    read -rp "GitHub-Benutzername: " gh_user
+    read -rsp "Token (unsichtbar): " gh_token; echo
+    printf '%s' "$gh_token" | docker login ghcr.io -u "$gh_user" --password-stdin || die "Anmeldung bei ghcr.io fehlgeschlagen."
+    docker compose pull || die "Images konnten nicht geladen werden."
+  else
+    die "Images konnten nicht geladen werden. Läuft der Deploy-Workflow auf GitHub (Actions -> Deploy)?"
+  fi
+fi
+
+say "Starte die Container"
+docker compose up -d --remove-orphans
+
+say "Richte das automatische Update ein (systemd-Timer, alle 5 Minuten)"
+unit_dir="$HOME/.config/systemd/user"
+mkdir -p "$unit_dir"
+# the service file assumes ~/batterywatch; use the real folder instead
+sed "s#%h/batterywatch#$PWD#" deploy/batterywatch-update.service > "$unit_dir/batterywatch-update.service"
+cp deploy/batterywatch-update.timer "$unit_dir/"
+if systemctl --user daemon-reload && systemctl --user enable --now batterywatch-update.timer; then
+  # keep the timer running when nobody is logged in (may need admin rights)
+  loginctl enable-linger "$USER" 2>/dev/null \
+    || echo "Hinweis: 'loginctl enable-linger $USER' ging nicht - der Timer läuft dann nur, solange jemand eingeloggt ist. Ggf. Admin fragen."
+  systemctl --user list-timers batterywatch-update.timer --no-pager || true
+else
+  echo "Hinweis: systemd-Benutzerdienste sind hier nicht verfügbar. Updates dann von Hand:"
+  echo "  cd $PWD && git pull && docker compose pull && docker compose up -d"
+fi
 
 say "Warte auf die API"
 set -a; . ./.env; set +a
@@ -100,6 +147,8 @@ Fertig.
   Datenbank:  ${DB_BIND:-127.0.0.1}:${DB_PORT:-20832}  Datenbank '${POSTGRES_DB}', Benutzer '${POSTGRES_USER}'
               Passwort steht in .env (POSTGRES_PASSWORD)
   Collector:  docker compose logs -f collector   (zeigt, ob der Live-Broker Nachrichten liefert)
+  Updates:    automatisch alle 5 Min. (push auf main -> GitHub baut -> Server holt es)
+              Protokoll: journalctl --user -u batterywatch-update.service
 
 Historische Daten aus der Kurs-Datenbank übernehmen:
   ./deploy/import-history.sh

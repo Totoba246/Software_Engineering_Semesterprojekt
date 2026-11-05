@@ -12,17 +12,52 @@ Kurs-Datenbank (127.0.0.1:5432) ──einmaliger Import──▶ ┘           �
 - **Unsere Datenbank** ist neu und gehört nur uns. Die Kurs-Datenbank wird nur gelesen.
 - Die Zugangsdaten stehen nur in `.env` auf dem Server (nicht in Git) – `tinf25d-llv.yaml` nie committen.
 
+## So kommt eine neue Version auf den Server (wie in der Skizze vom Professor)
+
+```
+ (1) push auf main         (2) GitHub-Runner                 (3) Server, alle 5 Minuten
+ ─────────────────▶  Tests (ci.yml) ─▶ Images bauen ─▶  ghcr.io  ◀── docker compose pull
+                     .github/workflows/deploy.yml     (Registry)     docker compose up -d
+                                                                     (systemd-Timer)
+```
+
+| Schritt | Datei | Was passiert |
+|---|---|---|
+| 1 | `.github/workflows/deploy.yml` | Nach erfolgreichen Tests auf `main` baut GitHub die Images `batterywatch-backend` und `batterywatch-frontend` und lädt sie nach **ghcr.io** (GitHub Container Registry) hoch – Tag `latest` und die Commit-Nummer. |
+| 2 | `docker-compose.server.yml` | Wie `docker-compose.yml`, aber mit den **fertigen Images** von ghcr.io statt selbst bauen; ohne Test-Broker und Fake-Nodes. Auf dem Server steht in `.env` `COMPOSE_FILE=docker-compose.server.yml`, damit jedes `docker compose` diese Datei nimmt. |
+| 3 | `deploy/batterywatch-update.service` + `.timer` | systemd führt alle 5 Minuten `git pull`, `docker compose pull` und `docker compose up -d` aus. Nur Container mit neuem Image werden neu gestartet; die Daten bleiben. |
+
+Ein Push auf `main` ist damit nach etwa 5–10 Minuten live – ohne dass jemand den Server anfasst.
+Variante (1) der Skizze: Der Server **fragt selbst nach** (kein offener Port, kein Server-Passwort bei GitHub).
+
+**Zugriff auf die Images („deploy-token [RO]“):** Neue Pakete auf ghcr.io sind zunächst privat.
+Entweder einmal auf GitHub öffentlich schalten (Repo-Seite → *Packages* → Paket → *Package settings* →
+*Change visibility* → *Public*; das Repo ist ohnehin öffentlich, in den Images stehen keine Passwörter)
+oder dem Server einen **Nur-Lese-Token** geben: GitHub → *Settings* → *Developer settings* →
+*Personal access tokens (classic)* → nur `read:packages`. `setup-server.sh` fragt danach, falls nötig.
+
 ## 1. Einrichten (einmalig)
+
+Voraussetzung: Der Branch ist in `main` gemergt und der Workflow **Deploy** ist auf GitHub
+unter *Actions* einmal grün durchgelaufen (dann gibt es die Images auf ghcr.io).
 
 ```bash
 ssh tinf25d-llv@212.227.31.76
-git clone -b claude/sleepy-brown-bvz71m https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
+git clone https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
 cd batterywatch
 ./deploy/setup-server.sh
 ```
 
 Das Skript fragt nach dem **MQTT-Passwort** (Enter übernimmt die Vorgaben in `[...]`), erzeugt ein
-eigenes Passwort für unsere Datenbank, schreibt alles in `.env` und startet die Container.
+eigenes Passwort für unsere Datenbank, schreibt alles in `.env`, lädt die Images, startet die
+Container und richtet den systemd-Timer für die automatischen Updates ein.
+
+Prüfen, ob der Timer läuft:
+
+```bash
+systemctl --user list-timers                          # wann das nächste Update läuft
+journalctl --user -u batterywatch-update.service      # was bei den Updates passiert ist
+```
 
 ## 2. Historische Daten übernehmen
 
@@ -74,7 +109,8 @@ nur durch das Passwort geschützt.
 ## Aktualisieren / Verwalten
 
 ```bash
-git pull && ./deploy/setup-server.sh   # neue Version bauen und starten (.env bleibt)
+systemctl --user start batterywatch-update.service   # sofort aktualisieren statt auf den Timer zu warten
+# Zurück auf eine ältere Version: in .env  IMAGE_TAG=<Commit-Nummer>  setzen, dann: docker compose up -d
 docker compose ps                      # Status
 docker compose logs -f api             # Logs eines Dienstes
 docker compose down                    # stoppen (Daten bleiben erhalten)
