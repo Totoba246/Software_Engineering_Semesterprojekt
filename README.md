@@ -125,6 +125,21 @@ Das Projekt wird **inkrementell** entwickelt.
 
 ---
 
+## 🚀 Schnellstart
+
+```bash
+cp .env.example .env
+docker compose up -d --build                    # DB, Broker, Collector, API, Frontend
+docker compose --profile test up -d publisher   # simulierte TrafficNodes
+```
+
+Frontend: http://localhost:20800 · API-Doku: http://localhost:20801/docs
+
+Details (Testdaten, Import der Beispieldaten, Live-Broker, Tests): [docs/Entwicklung.md](docs/Entwicklung.md) ·
+[MQTT-Vertrag](docs/MQTT-Vertrag.md) · [Statusregeln](docs/Statusregeln.md)
+
+---
+
 ## 🧩 Architektur
 
 > Detaillierte C4-Diagramme, Sequenzdiagramm und ADRs folgen in A04 (Softwarearchitektur & Schnittstellen).
@@ -132,17 +147,18 @@ Das Projekt wird **inkrementell** entwickelt.
 - **Context:** BatteryWatch als Softwaresystem ab MQTT-Broker; TrafficNode-Hardware/Firmware sind vorgelagert und nicht Teil des Systems
 - **Container:** Frontend, Backend, Datenbank, MQTT-Broker
 
-- **Code:** tbd – Sprache/Framework für Frontend und Backend sind im Team noch festzulegen
+- **Code:** Python (FastAPI, paho-mqtt, psycopg) im Backend, React im Frontend – siehe [ADR](docs/ADR.md) und [Entwicklung](docs/Entwicklung.md)
 
 ---
 
 ## 🧰 Tools & Technologien
 
 - **Versionsverwaltung:** GitHub (mit Issues)
-- **Backend:** tbd
-- **Frontend:** tbd
-- **Datenbank:** tbd
-- **MQTT-Broker:** tbd 
+- **Backend:** Python 3.12, FastAPI (REST-API), paho-mqtt (Collector), psycopg 3
+- **Frontend:** React 18 + Vite, Recharts (Verlauf), Leaflet/OpenStreetMap (Karte)
+- **Datenbank:** PostgreSQL 16
+- **MQTT-Broker:** Mosquitto 2 (lokal/Docker); Collector kann auch den Live-Broker des Kurses abonnieren
+- **Betrieb:** Docker Compose
 - **Coding:** Einsatz eines KI-Coding-Agents (z. B. Claude, Codex)
 
 ---
