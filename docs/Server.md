@@ -67,6 +67,13 @@ systemctl --user list-timers                          # wann das nächste Update
 journalctl --user -u batterywatch-update.service      # was bei den Updates passiert ist
 ```
 
+Steht im Protokoll `permission denied … /var/run/docker.sock`, obwohl `docker` in der Konsole
+funktioniert: Der systemd-Benutzerprozess lief schon, bevor das Konto in die Gruppe `docker` kam,
+und kennt die Gruppe nicht. Der Dienst startet Docker deshalb über `sg docker -c "…"` – mit der
+installierten Version von `setup-server.sh` ist das bereits so. Bei älteren Installationen
+`./deploy/setup-server.sh` einfach erneut ausführen (Daten und `.env` bleiben). Alternativ startet
+ein Admin den Prozess neu: `sudo systemctl restart user@$(id -u tinf25d-llv).service`.
+
 ## 2. Historische Daten übernehmen
 
 ```bash
