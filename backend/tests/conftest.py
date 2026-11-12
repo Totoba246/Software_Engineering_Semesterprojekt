@@ -32,7 +32,7 @@ def db_url(monkeypatch) -> str:
     monkeypatch.setenv("DATABASE_URL", url)
     with psycopg.connect(url, autocommit=True) as conn:
         ensure_schema(conn)
-        conn.execute("TRUNCATE measurements, devices, raw_messages, sessions, users RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE appointments, measurements, devices, raw_messages, sessions, users RESTART IDENTITY CASCADE")
     return url
 
 

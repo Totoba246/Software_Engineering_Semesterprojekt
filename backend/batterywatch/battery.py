@@ -102,12 +102,13 @@ def voltage_for_soc(soc_percent: float, curve: Sequence[tuple[float, float]]) ->
 def hours_until(voltage_now_v: float, target_v: float, trend_v_per_day: float | None) -> float | None:
     """Simple linear estimate: in how many hours does the voltage reach ``target_v``?
 
-    None if the voltage isn't falling (no estimate possible) or the target is
-    already reached. Deliberately simple (F04 "Wechselprognose", first version):
-    a straight line through the trend of the last 72 hours.
+    0 if the target is already reached (also without a trend), None if the
+    voltage isn't falling (no estimate possible). Deliberately simple
+    (F04 "Wechselprognose", first version): a straight line through the trend
+    of the last 72 hours.
     """
-    if trend_v_per_day is None or trend_v_per_day >= -0.005:  # flat or rising
-        return None
     if voltage_now_v <= target_v:
         return 0.0
+    if trend_v_per_day is None or trend_v_per_day >= -0.005:  # flat or rising
+        return None
     return (voltage_now_v - target_v) / -trend_v_per_day * 24

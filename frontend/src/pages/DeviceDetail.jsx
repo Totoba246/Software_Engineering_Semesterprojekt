@@ -11,7 +11,9 @@
  * Firmenchef/Mitarbeiter also see the assigned technician and can edit the
  * master data, assign a technician or delete the device (MasterDataCard).
  * A Servicetechniker opening a device that isn't theirs gets "Kein Zugriff"
- * (the server answers 403).
+ * (the server answers 403). For their own devices they see their next private
+ * replacement appointment and a button "Wechsel einplanen" (-> calendar, F13).
+ * The predicted dates link to the calendar (F12).
  */
 
 import { useState } from 'react'
@@ -22,6 +24,7 @@ import DeviceForm from '../components/DeviceForm.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
 import HistoryChart, { METRICS, NIGHT_FROM, NIGHT_TO } from '../components/HistoryChart.jsx'
 import { ago, dateTime, num, STATUS_LABEL } from '../format.js'
+import { shortDay } from './Calendar.jsx'
 import { usePolling } from '../usePolling.js'
 
 const RANGES = [
@@ -47,6 +50,20 @@ function statusText(d, rules) {
     case 'ok': return `Akku ab ${low} %`
     default: return 'Noch keine Messwerte'
   }
+}
+
+/* --- next own replacement appointment (Servicetechniker, F13) ---------------------------- */
+function PlanBox({ device }) {
+  const { data } = usePolling(api.appointments, [device.device_id])
+  const now = Date.now()
+  const next = (data ?? []).filter((a) => a.device_id === device.device_id && new Date(a.starts_at).getTime() > now - 3600e3)[0]
+  const time = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  return (
+    <div className="plan">
+      <span>{next ? <>Ihr Termin: <b>{shortDay(next.starts_at)}, {time(next.starts_at)} Uhr</b></> : 'Noch kein Wechseltermin eingetragen.'}</span>
+      <Link className="btn" to={`/kalender?g=${encodeURIComponent(device.device_id)}`}>Wechsel einplanen</Link>
+    </div>
+  )
 }
 
 function MessagesCard({ device }) {
@@ -235,6 +252,7 @@ export default function DeviceDetail({ rules, me, onChanged }) {
               Akkuspannung {num(d.battery_voltage_v, 2)} V (Mittel der letzten {rules?.smoothing_minutes ?? 60} Min.
               vor der letzten Meldung, inkl. Shunt-Korrektur U<sub>bat</sub> = {num(rules?.shunt_resistance_ohm ?? 0.002, 3)} Ω · I + U<sub>mess</sub>)
             </p>}
+            {me.role === 'techniker' && <PlanBox device={d} />}
           </section>
 
           <section className="card" aria-label="Gerätedaten">
@@ -259,10 +277,12 @@ export default function DeviceDetail({ rules, me, onChanged }) {
               <dd>{d.voltage_trend_v_per_day != null ? `${num(d.voltage_trend_v_per_day, 3)} V pro Tag (72 Std.)` : '–'}</dd>
               <dt>Voraussichtlich kritisch</dt>
               <dd className={d.estimated_critical_at ? 'warnish' : ''}>
-                {d.estimated_critical_at ? <>{dateTime(d.estimated_critical_at)}<br /><small>Schätzung aus dem Trend</small></> : '–'}
+                {d.estimated_critical_at
+                  ? <><Link to={`/kalender?g=${encodeURIComponent(d.device_id)}`}>{dateTime(d.estimated_critical_at)}</Link><br /><small>Schätzung aus dem Trend</small></>
+                  : '–'}
               </dd>
               <dt>Voraussichtlich leer</dt>
-              <dd>{d.estimated_empty_at ? dateTime(d.estimated_empty_at) : '–'}</dd>
+              <dd>{d.estimated_empty_at ? <Link to={`/kalender?g=${encodeURIComponent(d.device_id)}`}>{dateTime(d.estimated_empty_at)}</Link> : '–'}</dd>
               <dt>Position</dt>
               <dd>
                 {d.position ? `${num(d.position.latitude, 5)}, ${num(d.position.longitude, 5)}` : 'kein GPS'}

@@ -15,6 +15,7 @@ THE PARTS (one file each)
     auth.py      login, logout, own password            /api/auth/...
     devices.py   devices, history, messages, master data /api/devices/..., /api/technicians
     users.py     user management (admin only)            /api/users/...
+    appointments.py  private calendar of technicians     /api/appointments/...
     deps.py      "who is logged in?" and role checks used by all of them
     models.py    shapes of the JSON in and out
     queries.py   the SQL
@@ -36,7 +37,7 @@ from psycopg_pool import ConnectionPool
 
 from ..config import Settings, get_settings
 from ..db import ensure_schema
-from . import auth, devices, users
+from . import appointments, auth, devices, users
 from .deps import get_conn
 
 
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(devices.router)
     app.include_router(users.router)
+    app.include_router(appointments.router)
 
     @app.get("/api/health", tags=["System"])
     def health(conn=Depends(get_conn)):

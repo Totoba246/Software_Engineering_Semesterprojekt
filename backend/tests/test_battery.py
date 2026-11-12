@@ -68,3 +68,11 @@ def test_hours_until():
     assert hours_until(11.5, 11.0, 0.1) is None  # rising: no estimate
     assert hours_until(11.5, 11.0, None) is None
     assert hours_until(10.9, 11.0, -0.1) == 0.0  # already below
+
+
+def test_hours_until_already_reached_without_trend():
+    from batterywatch.battery import hours_until
+
+    # already below the target: due now, even if there is no (falling) trend
+    assert hours_until(10.9, 11.0, None) == 0.0
+    assert hours_until(10.9, 11.0, 0.2) == 0.0

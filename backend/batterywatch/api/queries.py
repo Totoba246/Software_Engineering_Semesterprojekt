@@ -19,6 +19,9 @@ Quick SQL glossary for these queries:
 #           (counted back from the newest fix, so it also works for old data)
 #  - msg:   newest received MQTT message, valid or not (shows rejected values)
 #  - tech:  the assigned service technician (master data)
+#  - trend: linear regression of the battery voltage over the 72 h before the newest
+#           measurement, in V/day. 72 h = three full day/night cycles, so the dimming
+#           plateaus average out. Basis of the prediction (F04) and the calendar (F12).
 # {where} is filled in by the API, e.g. "only devices of technician 7".
 DEVICE_STATE = """
 SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
@@ -32,7 +35,8 @@ SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
        msg.error                     AS last_message_error,
        win.avg_battery_voltage_mv,
        win.avg_current_ma,
-       pos.latitude, pos.longitude, pos.altitude_m, pos.satellites, pos.fixes
+       pos.latitude, pos.longitude, pos.altitude_m, pos.satellites, pos.fixes,
+       trend.trend_v_per_day
 FROM devices d
 LEFT JOIN users tech ON tech.id = d.technician_id
 LEFT JOIN LATERAL (
@@ -65,23 +69,23 @@ LEFT JOIN LATERAL (
     ORDER BY received_at DESC
     LIMIT 1
 ) msg ON true
+LEFT JOIN LATERAL (
+    SELECT regr_slope(battery_voltage_mv, extract(epoch FROM measured_at)) * 86400 / 1000 AS trend_v_per_day
+    FROM measurements m
+    WHERE m.device_id = d.device_id
+      AND m.measured_at > last.measured_at - interval '72 hours'
+) trend ON true
 {where}
 ORDER BY d.device_id
 """
 
-# Additional figures for the detail page.
-#  - trend: linear regression of the battery voltage over the last 72 h, in V/day.
-#           72 h = three full day/night cycles, so the dimming plateaus average out.
+# Additional figures for the detail page (the trend is part of DEVICE_STATE).
 DEVICE_STATS = """
 SELECT count(*)                                         AS measurement_count,
        min(measured_at)                                 AS first_seen,
        (SELECT avg(current_ma) FROM measurements m2
          WHERE m2.device_id = %(device_id)s
-           AND m2.measured_at > %(last_seen)s - interval '24 hours') AS avg_current_ma_24h,
-       (SELECT regr_slope(battery_voltage_mv, extract(epoch FROM measured_at)) * 86400 / 1000
-          FROM measurements m3
-         WHERE m3.device_id = %(device_id)s
-           AND m3.measured_at > %(last_seen)s - interval '72 hours') AS trend_v_per_day
+           AND m2.measured_at > %(last_seen)s - interval '24 hours') AS avg_current_ma_24h
 FROM measurements m
 WHERE m.device_id = %(device_id)s
 """
@@ -128,4 +132,16 @@ SELECT u.id, u.username, u.display_name, u.email, u.role, u.active, u.must_chang
 FROM users u
 {where}
 ORDER BY u.display_name
+"""
+
+# --- Calendar: private replacement appointments of a technician (F13) ------------------
+# "assigned" = is the device still assigned to this technician? (it may have been
+# reassigned after the appointment was made; the appointment then stays visible)
+APPOINTMENTS = """
+SELECT a.id, a.device_id, COALESCE(d.name, d.device_id) AS device_name, a.starts_at, a.note,
+       (d.technician_id IS NOT DISTINCT FROM a.technician_id) AS assigned, a.created_at
+FROM appointments a
+JOIN devices d ON d.device_id = a.device_id
+WHERE a.technician_id = %(tech_id)s {where}
+ORDER BY a.starts_at, a.id
 """

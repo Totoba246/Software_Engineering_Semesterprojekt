@@ -7,8 +7,10 @@
  *   Firmenchef / Mitarbeiter  -> /              all devices (Overview) + "Gerät hinzufügen"
  *                                /geraete/101   detail page, master data editable
  *                                /geraete/neu   add a node
+ *                                /kalender      expected failures of all devices (F12)
  *   Servicetechniker          -> the same pages, but only their assigned devices
- *                                (the SERVER filters - see backend/batterywatch/api/devices.py)
+ *                                (the SERVER filters - see backend/batterywatch/api/devices.py);
+ *                                /kalender also shows their private appointments (F13)
  */
 
 import { useEffect, useState } from 'react'
@@ -16,6 +18,7 @@ import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { api, isManagement, ROLES } from './api.js'
 import PasswordForm from './components/PasswordForm.jsx'
 import { time } from './format.js'
+import Calendar from './pages/Calendar.jsx'
 import DeviceDetail from './pages/DeviceDetail.jsx'
 import Login from './pages/Login.jsx'
 import NewDevice from './pages/NewDevice.jsx'
@@ -120,7 +123,10 @@ function DeviceShell({ me, onLogout }) {
   return (
     <>
       <Header me={me} onLogout={onLogout}
-        nav={<NavLink to="/" end>{me.role === 'techniker' ? 'Meine Geräte' : 'Übersicht'}</NavLink>}>
+        nav={<>
+          <NavLink to="/" end>{me.role === 'techniker' ? 'Meine Geräte' : 'Übersicht'}</NavLink>
+          <NavLink to="/kalender">Kalender</NavLink>
+        </>}>
         {devices.error && <span className="err">Backend nicht erreichbar: {devices.error.message}</span>}
         <span>Stand {time(devices.updatedAt)} · automatisch alle 5 Min.</span>
         <button type="button" className="btn-s" onClick={devices.refresh} disabled={devices.loading}>
@@ -132,6 +138,7 @@ function DeviceShell({ me, onLogout }) {
         <Routes>
           <Route path="/" element={<Overview devices={devices.data} rules={rules} me={me} />} />
           <Route path="/geraete/neu" element={manager ? <NewDevice onSaved={devices.refresh} /> : <Navigate to="/" replace />} />
+          <Route path="/kalender" element={<Calendar devices={devices.data} me={me} />} />
           <Route path="/geraete/:id" element={<DeviceDetail rules={rules} me={me} onChanged={devices.refresh} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

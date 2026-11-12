@@ -64,6 +64,12 @@ export const api = {
   updateDevice: (id, data) => request('PATCH', `/api/devices/${enc(id)}`, data),
   deleteDevice: (id) => request('DELETE', `/api/devices/${enc(id)}`),
 
+  // private calendar (Servicetechniker only; other roles get 403)
+  appointments: () => get('/api/appointments'),
+  createAppointment: (data) => request('POST', '/api/appointments', data),
+  updateAppointment: (id, data) => request('PATCH', `/api/appointments/${id}`, data),
+  deleteAppointment: (id) => request('DELETE', `/api/appointments/${id}`),
+
   // user management (admin)
   users: () => get('/api/users'),
   createUser: (data) => request('POST', '/api/users', data),

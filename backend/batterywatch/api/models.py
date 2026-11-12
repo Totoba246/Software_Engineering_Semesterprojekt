@@ -76,6 +76,11 @@ class DeviceSummary(BaseModel):
     last_message_at: datetime | None
     minutes_since_last_message: float | None
     last_message_error: str | None  # set if the newest message was rejected
+    # Simple prediction (F04): straight line through the 72 h voltage trend.
+    # Also used by the calendar (F12): "wird kritisch" and "voraussichtlich leer".
+    voltage_trend_v_per_day: float | None
+    estimated_critical_at: datetime | None  # charge level falls below STATUS_CRITICAL_BELOW
+    estimated_empty_at: datetime | None     # charge level reaches 0 %
 
 
 class DeviceDetail(DeviceSummary):
@@ -84,10 +89,6 @@ class DeviceDetail(DeviceSummary):
     measurement_count: int
     first_seen: datetime | None
     avg_current_a_24h: float | None
-    voltage_trend_v_per_day: float | None
-    # Simple prediction (F04): straight line through the 72 h trend
-    estimated_critical_at: datetime | None
-    estimated_empty_at: datetime | None
 
 
 class DeviceWrite(BaseModel):
@@ -140,6 +141,33 @@ class Message(BaseModel):
     accepted: bool
     error: str | None
     payload: str
+
+
+# --- Calendar: private replacement appointments (F13) ------------------------------
+class AppointmentWrite(BaseModel):
+    """What a technician may change on an own appointment. Empty note = no note."""
+
+    starts_at: datetime | None = None  # date + time of the planned battery replacement
+    note: str | None = Field(None, max_length=200)
+
+    _blank = field_validator("note", mode="before")(_blank_to_none)
+
+
+class AppointmentCreate(AppointmentWrite):
+    device_id: str = Field(pattern=DEVICE_ID_PATTERN)
+    starts_at: datetime
+
+
+class Appointment(BaseModel):
+    """One appointment of the logged-in technician (answer of GET /api/appointments)."""
+
+    id: int
+    device_id: str
+    device_name: str
+    starts_at: datetime
+    note: str | None
+    assigned: bool  # False = the device has since been assigned to someone else
+    created_at: datetime
 
 
 # --- Login -----------------------------------------------------------------------

@@ -106,3 +106,22 @@ CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS technician_id INTEGER REFERENCES users (id) ON DELETE SET NULL;
 ALTER TABLE devices DROP COLUMN IF EXISTS manual_latitude;
 ALTER TABLE devices DROP COLUMN IF EXISTS manual_longitude;
+
+-- =============================================================================
+-- v4: calendar (F12, F13)
+-- =============================================================================
+
+-- Private replacement appointments of the service technicians (F13, issue #12):
+-- "I want to replace the battery of device 101 on Tuesday at 08:30".
+-- Only the technician who made an appointment can see it (api/appointments.py).
+-- The expected failures (F12, issue #11) are not stored: they are calculated
+-- from the measurements every time (estimated_critical_at / estimated_empty_at).
+CREATE TABLE IF NOT EXISTS appointments (
+    id             SERIAL PRIMARY KEY,
+    technician_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    device_id      TEXT NOT NULL REFERENCES devices (device_id) ON DELETE CASCADE,
+    starts_at      TIMESTAMPTZ NOT NULL,    -- date + time of the planned replacement
+    note           TEXT,                    -- e.g. "Ersatzakku aus dem Lager mitnehmen"
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS appointments_technician_time_idx ON appointments (technician_id, starts_at);

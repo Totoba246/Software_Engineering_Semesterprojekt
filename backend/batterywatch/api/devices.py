@@ -1,5 +1,6 @@
 """Device endpoints: overview, detail, history, messages (F01, F03, F10, F11)
-and master data / technician assignment (F07, F09).
+and master data / technician assignment (F07, F09). Every device comes with the
+simple prediction (F04), which the calendar (F12) shows.
 
 Who may do what (use-case diagram):
   chef, mitarbeiter  see all devices; add, edit, delete devices; assign technicians
@@ -59,6 +60,9 @@ def _summarize(row: dict, now: datetime, s: Settings, user: CurrentUser) -> dict
     def mv_to_v(v):
         return round(v / 1000, 3) if v is not None else None
 
+    trend = round(row["trend_v_per_day"], 3) if row["trend_v_per_day"] is not None else None
+    critical_at, empty_at = _prediction(volts, last_seen, trend, s)
+
     return dict(
         device_id=row["device_id"], name=row["name"] or row["device_id"],
         tenant=row["tenant"], device_type=row["device_type"],
@@ -76,7 +80,22 @@ def _summarize(row: dict, now: datetime, s: Settings, user: CurrentUser) -> dict
         last_message_at=last_msg,
         minutes_since_last_message=round(msg_minutes, 1) if msg_minutes is not None else None,
         last_message_error=row["last_message_error"] if row["last_message_accepted"] is False else None,
+        voltage_trend_v_per_day=trend,
+        estimated_critical_at=critical_at, estimated_empty_at=empty_at,
     )
+
+
+def _prediction(volts: float | None, last_seen: datetime | None, trend: float | None,
+                s: Settings) -> tuple[datetime | None, datetime | None]:
+    """Prediction (F04, simple): when does the falling voltage reach "critical" / "empty"?
+    Counted from the newest measurement; more than a year ahead counts as "no estimate"."""
+    if volts is None or last_seen is None:
+        return None, None
+    result = []
+    for target_pct in (s.status_critical_below, 0):
+        hours = battery.hours_until(volts, battery.voltage_for_soc(target_pct, s.soc_curve), trend)
+        result.append(last_seen + timedelta(hours=hours) if hours is not None and hours < 24 * 365 else None)
+    return result[0], result[1]
 
 
 def _fetch_states(conn, s: Settings, user: CurrentUser, device_id: str | None = None) -> list[dict]:
@@ -121,28 +140,14 @@ def get_device(device_id: str, conn=Depends(get_conn), s: Settings = Depends(get
                user=Depends(viewer)):
     _check_access(conn, device_id, user)
     state = _fetch_states(conn, s, user, device_id)[0]
-    stats = {"measurement_count": 0, "first_seen": None, "avg_current_ma_24h": None, "trend_v_per_day": None}
+    stats = {"measurement_count": 0, "first_seen": None, "avg_current_ma_24h": None}
     if state["last_seen"] is not None:
         stats = conn.execute(queries.DEVICE_STATS, {"device_id": device_id, "last_seen": state["last_seen"]}).fetchone()
-    trend = round(stats["trend_v_per_day"], 3) if stats["trend_v_per_day"] is not None else None
-
-    # Prediction (F04, simple): when does the falling voltage reach "critical" / "empty"?
-    critical_at = empty_at = None
-    if state["battery_voltage_v"] is not None and state["last_seen"] is not None:
-        for target_pct, name in ((s.status_critical_below, "critical"), (0, "empty")):
-            hours = battery.hours_until(state["battery_voltage_v"],
-                                        battery.voltage_for_soc(target_pct, s.soc_curve), trend)
-            if hours is not None and hours < 24 * 365:
-                when = state["last_seen"] + timedelta(hours=hours)
-                critical_at, empty_at = (when, empty_at) if name == "critical" else (critical_at, when)
-
     avg_ma = stats["avg_current_ma_24h"]
     return DeviceDetail(
         **state,
         measurement_count=stats["measurement_count"], first_seen=stats["first_seen"],
         avg_current_a_24h=round(avg_ma / 1000, 3) if avg_ma is not None else None,
-        voltage_trend_v_per_day=trend,
-        estimated_critical_at=critical_at, estimated_empty_at=empty_at,
     )
 
 

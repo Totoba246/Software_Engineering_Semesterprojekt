@@ -272,7 +272,7 @@ def test_import_history_skips_empty_tables_and_reads_device_from_topic(db_url, d
         assert rows == [("101", 12100.0), ("TSN-7", 12000.0)]
         # when every fitting table is empty, the layout is printed instead
         db.execute("TRUNCATE src.nodedata")
-        db.execute("TRUNCATE measurements, devices, raw_messages")
+        db.execute("TRUNCATE appointments, measurements, devices, raw_messages")
         with pytest.raises(SystemExit) as exc:
             import_data.main(["history", "--source-dsn", db_url, "--check"])
         assert "keine Zeile Zeit + Strom + Spannung" in str(exc.value)
@@ -315,7 +315,7 @@ def test_import_history_with_course_database_layout(db_url, db, capsys):
 
         # nothing usable anywhere -> explains which values are filled
         db.execute("UPDATE history.measurements SET received_at = NULL")
-        db.execute("TRUNCATE measurements, devices, raw_messages")
+        db.execute("TRUNCATE appointments, measurements, devices, raw_messages")
         with pytest.raises(SystemExit) as exc:
             import_data.main(["history", "--source-dsn", db_url, "--table", "history.measurements", "--check"])
         text = str(exc.value)

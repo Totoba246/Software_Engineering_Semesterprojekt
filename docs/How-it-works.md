@@ -177,8 +177,8 @@ If something's wrong (node 101 currently sends `voltage_mV: 5368709120`, which i
 | Role | Sees | May change |
 |---|---|---|
 | Admin | only the user management | accounts (create, role, lock, password, delete) |
-| Firmenchef, Mitarbeiter | all devices | devices (add, edit, delete), assign technicians |
-| Servicetechniker | only devices assigned to them | nothing |
+| Firmenchef, Mitarbeiter | all devices, calendar of expected failures | devices (add, edit, delete), assign technicians |
+| Servicetechniker | only devices assigned to them, calendar with their own appointments | their own private replacement appointments |
 
 The **server** checks this for every request (`backend/batterywatch/api/deps.py`), not only the web
 page: a technician asking for someone else's device gets "403 Kein Zugriff", even with hand-made
