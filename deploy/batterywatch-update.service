@@ -13,6 +13,13 @@
 #   3. docker compose up -d   -> restarts ONLY containers whose image changed;
 #                                if nothing is new, nothing happens
 #
+#  Why "sg docker -c ...": the docker commands need the group "docker". The
+#  systemd user manager keeps the groups it had when it STARTED - if the user
+#  was added to "docker" later, it does not have it ("permission denied ...
+#  /var/run/docker.sock" in the log, happened on the course server). sg starts
+#  the command with that group. setup-server.sh switches back to plain
+#  "docker compose" if the user is not in the group "docker" at all.
+#
 #  Installed by deploy/setup-server.sh as a "user service" (no root needed) into
 #  ~/.config/systemd/user/. Assumes the project is in ~/batterywatch.
 #  Useful commands on the server:
@@ -28,5 +35,5 @@ Type=oneshot
 WorkingDirectory=%h/batterywatch
 # "-" in front: a failed git pull (e.g. no network) must not stop the image update
 ExecStart=-/usr/bin/git pull --ff-only --quiet
-ExecStart=/usr/bin/env docker compose pull --quiet
-ExecStart=/usr/bin/env docker compose up -d --remove-orphans
+ExecStart=/usr/bin/sg docker -c "docker compose pull --quiet"
+ExecStart=/usr/bin/sg docker -c "docker compose up -d --remove-orphans"

@@ -4,7 +4,7 @@
 # =============================================================================
 #  HOW TO USE (type these on your laptop, one after another):
 #    ssh tinf25d-llv@212.227.31.76        # log into the server (asks for the SSH password)
-#    git clone -b claude/sleepy-brown-bvz71m https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
+#    git clone https://github.com/Totoba246/Software_Engineering_Semesterprojekt.git batterywatch
 #                                         # download our code into the folder "batterywatch"
 #    cd batterywatch                      # go into that folder
 #    ./deploy/setup-server.sh             # run this script
@@ -137,6 +137,11 @@ unit_dir="$HOME/.config/systemd/user"
 mkdir -p "$unit_dir"
 # the service file assumes ~/batterywatch; use the real folder instead
 sed "s#%h/batterywatch#$PWD#" deploy/batterywatch-update.service > "$unit_dir/batterywatch-update.service"
+# The service runs docker via "sg docker" (see comment in the file). Without the
+# group "docker" (e.g. root or rootless Docker) sg would fail - use docker directly.
+if ! id -nG | tr ' ' '\n' | grep -qx docker || [ ! -x /usr/bin/sg ]; then
+  sed -i 's#^ExecStart=/usr/bin/sg docker -c "\(.*\)"$#ExecStart=/usr/bin/env \1#' "$unit_dir/batterywatch-update.service"
+fi
 cp deploy/batterywatch-update.timer "$unit_dir/"
 if systemctl --user daemon-reload && systemctl --user enable --now batterywatch-update.timer; then
   # keep the timer running when nobody is logged in (may need admin rights)
