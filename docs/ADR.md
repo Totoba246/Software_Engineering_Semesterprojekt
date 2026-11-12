@@ -2,7 +2,7 @@
 
 Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 
-**Rahmenbedingungen:** Dreierteam, begrenzte Projektlaufzeit, wenige Nutzer beim Betreiber, keine Skalierungsanforderung. Datenquelle sind MQTT-Nachrichten der TrafficNodes.
+**Rahmenbedingungen:** 3er-Team, begrenzte Projektlaufzeit, wenige Nutzer beim Betreiber, keine Skalierungsanforderung. Datenquelle sind MQTT-Nachrichten der TrafficNodes.
 
 | ADR | Thema | Status |
 | --- | --- | --- |
