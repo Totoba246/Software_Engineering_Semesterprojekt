@@ -151,7 +151,7 @@ Details (Tests, Import, Entwicklung): [docs/Entwicklung.md](docs/Entwicklung.md)
 | F01 | Geräteübersicht | ✅ Liste + Karte mit Akkustand, Status, letzter Meldung |
 | F02 | Statusregeln & Warnungen | 🟡 Regeln umgesetzt ([Statusregeln](docs/Statusregeln.md)), Warnhinweis in der Webseite; keine E-Mail/Push |
 | F03 | Verlaufsanzeige | ✅ 24 Std. / 7 / 30 Tage / gesamt, Akkustand, Spannung, Strom |
-| F04 | Wechselprognose | 🟡 einfache Schätzung „voraussichtlich kritisch/leer“ aus dem 72-Std.-Trend |
+| F04 | Wechselprognose | 🟡 einfache Schätzung „voraussichtlich kritisch/leer“ aus dem 72-Std.-Trend, für jedes Gerät (Detailansicht und Kalender) |
 | F05 | Filter/Sortierung | ✅ Status, Kategorie, Ort, Servicetechniker, Suche, Sortierung |
 | F06 | Login/Rollen | ✅ Admin, Firmenchef, Mitarbeiter, Servicetechniker (ADR-09) |
 | F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen; Name, Kategorie, Ort (Position kommt per GPS, Mittel der letzten 3 Tage) |
@@ -159,7 +159,8 @@ Details (Tests, Import, Entwicklung): [docs/Entwicklung.md](docs/Entwicklung.md)
 | F09 | Techniker-Zuordnung | ✅ je Gerät ein Servicetechniker; Techniker sieht nur seine Geräte |
 | F10 | Kartenansicht | ✅ Karte in der Übersicht und Detailansicht |
 | F11 | Detailansicht | ✅ inkl. Stammdaten und zugeordnetem Techniker (nur Firmenchef/Mitarbeiter) |
-| F12, F13 | Kalender | ❌ noch offen (niedrige Priorität) |
+| F12 | Kalender voraussichtlicher Ausfälle | ✅ Monatsansicht `/kalender`: je Gerät „wird kritisch“ (gelb) und „voraussichtlich leer“ (rot) aus der Prognose (F04); Firmenchef/Mitarbeiter alle Geräte, Techniker nur zugeordnete |
+| F13 | Privater Kalender Servicetechniker | ✅ Techniker tragen Wechseltermine (Gerät, Datum, Uhrzeit, Notiz) ein; nur für sie selbst sichtbar, „Wechsel einplanen“ aus Kalender und Detailansicht |
 
 ---
 

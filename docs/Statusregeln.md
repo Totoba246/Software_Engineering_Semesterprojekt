@@ -52,6 +52,20 @@ markiert. Der Akkustatus bezieht sich dann auf den letzten bekannten Stand.
 Sendet ein Gerät nur **ungültige** Werte (z. B. 5 368 709 120 mV), bleibt der Status
 „Unbekannt“ bzw. der letzte gültige Stand; das Frontend zeigt den Grund der Ablehnung an.
 
+## 5. Prognose (F04) und Kalender (F12)
+
+Aus dem Trend (V/Tag, 72 Stunden) wird eine Gerade verlängert: Wann erreicht die geglättete
+Spannung die Spannung für „kritisch“ (20 %) bzw. „leer“ (0 %)? Gezählt ab der letzten Meldung.
+Ist die Schwelle schon unterschritten, gilt der Zeitpunkt der letzten Meldung („bereits kritisch“).
+Steigt oder stagniert die Spannung (> −0,005 V/Tag) oder liegt das Ergebnis über ein Jahr in der
+Zukunft, gibt es keine Schätzung. Beide Zeitpunkte stehen im Kalender (`/kalender`):
+gelb „wird kritisch“, rot „voraussichtlich leer“. Servicetechniker bekommen als Vorschlag für
+einen Wechseltermin den Tag vor „wird kritisch“, frühestens heute.
+
+> ⚠️ Die Schätzung hängt an der Platzhalter-Kennlinie aus Abschnitt 3 und ist eine erste,
+> bewusst einfache Version (Issue #9). Eine bessere Prognose ersetzt nur `battery.hours_until`
+> bzw. die Felder `estimated_critical_at`/`estimated_empty_at`; der Kalender bleibt gleich.
+
 ## Offene Punkte
 
 - Kennlinie mit echtem Batterietyp/Datenblatt abgleichen.
