@@ -314,3 +314,13 @@ input[type=text], input[type=password], input[type=email], input[type=number] {
   .who span:last-child { display: none }
 }
 @media (max-width: 420px) { .two { grid-template-columns: 1fr } }
+
+/* compact filters above the device list */
+.filters { gap: 10px; padding: 12px 14px }
+.filter-top { display: flex; gap: 8px; align-items: center }
+.filter-top input { flex: 1 }
+.filter-top .btn-s { padding: 8px 10px; white-space: nowrap }
+.btn-sm { padding: 7px 10px 6px; font-size: 13px; white-space: nowrap }
+.more-filters { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg) }
+.more-filters select { background: var(--surface) }
+.more-filters .chip { justify-self: start }

@@ -47,11 +47,10 @@ def _summarize(row: dict, now: datetime, s: Settings, user: CurrentUser) -> dict
     msg_minutes = (now - last_msg).total_seconds() / 60 if last_msg else None
 
     position = None
-    if row["latitude"] is not None:  # GPS from the node wins
-        position = Position(latitude=row["latitude"], longitude=row["longitude"],
-                            altitude_m=row["altitude_m"], satellites=row["satellites"], source="gps")
-    elif row["manual_latitude"] is not None:  # entered by hand (node without GPS)
-        position = Position(latitude=row["manual_latitude"], longitude=row["manual_longitude"], source="manuell")
+    if row["latitude"] is not None:  # None = the node never sent a GPS position
+        position = Position(latitude=round(row["latitude"], 6), longitude=round(row["longitude"], 6),
+                            altitude_m=round(row["altitude_m"], 1) if row["altitude_m"] is not None else None,
+                            satellites=row["satellites"], fixes=row["fixes"], days=s.position_days)
 
     technician = None
     if user.is_management and row["technician_id"] is not None:  # README F11: only for Betreiber
@@ -81,7 +80,7 @@ def _summarize(row: dict, now: datetime, s: Settings, user: CurrentUser) -> dict
 
 
 def _fetch_states(conn, s: Settings, user: CurrentUser, device_id: str | None = None) -> list[dict]:
-    conditions, params = [], {"window_minutes": s.smoothing_minutes}
+    conditions, params = [], {"window_minutes": s.smoothing_minutes, "position_days": s.position_days}
     if device_id is not None:
         conditions.append("d.device_id = %(device_id)s")
         params["device_id"] = device_id
@@ -206,14 +205,8 @@ def _check_technician(conn, technician_id: int | None) -> None:
         raise HTTPException(status_code=400, detail="Diesen Servicetechniker gibt es nicht (oder er ist gesperrt).")
 
 
-def _check_position(body: DeviceWrite, fields: set[str]) -> None:
-    if ("latitude" in fields) != ("longitude" in fields) or (body.latitude is None) != (body.longitude is None):
-        raise HTTPException(status_code=400, detail="Breitengrad und Längengrad bitte beide angeben (oder beide leer).")
-
-
 # which DeviceWrite field goes into which database column
-_COLUMNS = {"name": "name", "category": "category", "location": "location",
-            "latitude": "manual_latitude", "longitude": "manual_longitude", "technician_id": "technician_id"}
+_COLUMNS = {"name": "name", "category": "category", "location": "location", "technician_id": "technician_id"}
 
 
 @router.post("/devices", response_model=DeviceDetail, status_code=201)
@@ -221,14 +214,12 @@ def create_device(body: DeviceCreate, conn=Depends(get_conn), s: Settings = Depe
                   user=Depends(manager)):
     """Register a node in advance (before its first message), with master data.
     The device_id must match the id in its MQTT topic, e.g. traffic-nodes/<id>/measurements."""
-    _check_position(body, body.model_fields_set | {"latitude", "longitude"})
     _check_technician(conn, body.technician_id)
     try:
         conn.execute(
-            "INSERT INTO devices (device_id, device_type, name, category, location, "
-            "manual_latitude, manual_longitude, technician_id) VALUES (%s, 'trafficnode', %s, %s, %s, %s, %s, %s)",
-            (body.device_id, body.name, body.category, body.location, body.latitude, body.longitude,
-             body.technician_id))
+            "INSERT INTO devices (device_id, device_type, name, category, location, technician_id) "
+            "VALUES (%s, 'trafficnode', %s, %s, %s, %s)",
+            (body.device_id, body.name, body.category, body.location, body.technician_id))
     except psycopg.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail=f"Ein Gerät mit der ID {body.device_id} gibt es schon.")
     return get_device(body.device_id, conn, s, user)
@@ -240,8 +231,6 @@ def update_device(device_id: str, body: DeviceWrite, conn=Depends(get_conn),
     """Change master data. Only the fields sent are changed; null clears a field."""
     _check_access(conn, device_id, user)
     fields = body.model_fields_set
-    if fields & {"latitude", "longitude"}:
-        _check_position(body, fields)
     if "technician_id" in fields:
         _check_technician(conn, body.technician_id)
     if fields:

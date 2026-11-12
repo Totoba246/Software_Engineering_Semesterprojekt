@@ -73,6 +73,7 @@ x-backend-env: &backend-env
   STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}                # below 50 % = yellow
   SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}              # average voltage over 60 min
   STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}          # no data for 45 min = "old"
+  POSITION_DAYS: ${POSITION_DAYS:-3}                       # map position = average GPS of 3 days
   # Login (ADR-09, explained in backend/batterywatch/config.py)
   SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
   COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS

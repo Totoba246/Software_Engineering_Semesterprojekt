@@ -15,14 +15,14 @@ Quick SQL glossary for these queries:
 #  - win:   average over the smoothing window before the newest measurement.
 #           Single readings scatter by +-0.15 V and the load changes between day and
 #           night (the traffic light dims at night), so a single value is too noisy.
-#  - pos:   newest measurement that has a GPS fix
+#  - pos:   AVERAGE position of the GPS fixes of the last POSITION_DAYS days
+#           (counted back from the newest fix, so it also works for old data)
 #  - msg:   newest received MQTT message, valid or not (shows rejected values)
 #  - tech:  the assigned service technician (master data)
 # {where} is filled in by the API, e.g. "only devices of technician 7".
 DEVICE_STATE = """
 SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
        d.technician_id, tech.display_name AS technician_name,
-       d.manual_latitude, d.manual_longitude,
        last.measured_at              AS last_seen,
        last.current_ma               AS last_current_ma,
        last.battery_voltage_mv       AS last_battery_voltage_mv,
@@ -32,7 +32,7 @@ SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
        msg.error                     AS last_message_error,
        win.avg_battery_voltage_mv,
        win.avg_current_ma,
-       pos.latitude, pos.longitude, pos.altitude_m, pos.satellites
+       pos.latitude, pos.longitude, pos.altitude_m, pos.satellites, pos.fixes
 FROM devices d
 LEFT JOIN users tech ON tech.id = d.technician_id
 LEFT JOIN LATERAL (
@@ -50,11 +50,13 @@ LEFT JOIN LATERAL (
       AND m.measured_at <= last.measured_at
 ) win ON true
 LEFT JOIN LATERAL (
-    SELECT latitude, longitude, altitude_m, satellites
+    SELECT avg(m.latitude) AS latitude, avg(m.longitude) AS longitude, avg(m.altitude_m) AS altitude_m,
+           round(avg(m.satellites))::int AS satellites, count(*) AS fixes
     FROM measurements m
     WHERE m.device_id = d.device_id AND m.latitude IS NOT NULL
-    ORDER BY measured_at DESC
-    LIMIT 1
+      AND m.measured_at >= (SELECT max(g.measured_at) FROM measurements g
+                            WHERE g.device_id = d.device_id AND g.latitude IS NOT NULL)
+                           - make_interval(days => %(position_days)s)
 ) pos ON true
 LEFT JOIN LATERAL (
     SELECT received_at, accepted, error

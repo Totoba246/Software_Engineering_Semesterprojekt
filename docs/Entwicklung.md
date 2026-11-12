@@ -179,7 +179,7 @@ Das Frontend fragt die Daten alle 5 Minuten neu ab (ADR-06).
 
 | Tabelle | Inhalt |
 |---|---|
-| `devices` | ein Eintrag je Gerät (beim ersten Messwert automatisch oder von Hand angelegt); Stammdaten `name`, `category`, `location`, `technician_id`, manuelle Position (F07, F09) |
+| `devices` | ein Eintrag je Gerät (beim ersten Messwert automatisch oder von Hand angelegt); Stammdaten `name`, `category`, `location`, `technician_id` (F07, F09). Die Position ist der Mittelwert der GPS-Positionen der letzten `POSITION_DAYS` (3) Tage |
 | `users` | Konten mit Rolle (`admin`, `chef`, `mitarbeiter`, `techniker`), Argon2-Passwort-Hash, gesperrt ja/nein |
 | `sessions` | angemeldete Browser (nur SHA-256-Hash des Cookie-Tokens), mit Ablaufzeit |
 | `measurements` | ein Eintrag je gültiger Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, `temperature_c`, GPS, `source` (`mqtt`/`import`) |

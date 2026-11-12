@@ -266,9 +266,8 @@ export default function DeviceDetail({ rules, me, onChanged }) {
               <dt>Position</dt>
               <dd>
                 {d.position ? `${num(d.position.latitude, 5)}, ${num(d.position.longitude, 5)}` : 'kein GPS'}
-                {d.position?.source === 'manuell' && ' (manuell eingetragen)'}
                 {d.position?.altitude_m != null && ` · ${num(d.position.altitude_m, 0)} m`}
-                {d.position?.satellites != null && ` · ${d.position.satellites} Sat.`}
+                {d.position && <><br /><small>Mittel aus {d.position.fixes} GPS-{d.position.fixes === 1 ? 'Messung' : 'Messungen'} der letzten {d.position.days} Tage</small></>}
               </dd>
               <dt>Messwerte</dt>
               <dd>{d.measurement_count ? `${d.measurement_count.toLocaleString('de-DE')} seit ${dateTime(d.first_seen)}` : 'keine'}</dd>
@@ -289,8 +288,7 @@ export default function DeviceDetail({ rules, me, onChanged }) {
               <div className="mini"><DeviceMap devices={[d]} selectedId={d.device_id} /></div>
             ) : (
               <p className="hint">
-                Für dieses Gerät liegt keine Position vor (kein GPS).
-                {isManagement(me) && ' Unter „Stammdaten → Bearbeiten“ lässt sich eine Position von Hand eintragen.'}
+                Für dieses Gerät liegt keine Position vor – es hat noch keine GPS-Position gesendet.
               </p>
             )}
           </section>

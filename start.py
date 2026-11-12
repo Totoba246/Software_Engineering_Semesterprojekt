@@ -18,6 +18,9 @@ USE (in a terminal, in the project folder, e.g. the VS Code terminal)
     python start.py check-history    plausibility report of the course history database
     python start.py import-history   copy the course history into your local database
                                      (optional: --to 2026-03-29T00:16:57+00:00)
+    python start.py replay-history   play the course history back, one message per minute,
+                                     as if node 101 were sending live (device "101-sim");
+                                     --csv: sample recording instead, --interval 10: faster
     python start.py demo             demo accounts + device master data for the fake nodes
     python start.py reset-password NAME   new password for an account (e.g. if forgotten)
     python start.py reset            DELETE all local data and start fresh
@@ -331,6 +334,20 @@ def cmd_history(extra_args: list[str]) -> None:
         fail("Noch nicht eingerichtet - zuerst 'python start.py' ausführen.")
     compose("up", "-d", "db")  # our local database must be running for the import
 
+    tunnel = open_tunnel()
+    try:
+        password = ask_course_db_password()
+        say("Lese die Kurs-Datenbank")
+        run_import_tool(["history", *extra_args], password)
+    finally:
+        if tunnel is not None:
+            tunnel.terminate()
+            print("\nSSH-Tunnel geschlossen.")
+
+
+def open_tunnel() -> subprocess.Popen | None:
+    """SSH tunnel to the course history database (see cmd_history).
+    Returns the ssh process (to close later), or None if a tunnel was already open."""
     tunnel = None
     if _port_open(TUNNEL_PORT):
         print(f"(Port {TUNNEL_PORT} ist schon offen - verwende den bestehenden Tunnel.)")
@@ -358,14 +375,75 @@ def cmd_history(extra_args: list[str]) -> None:
             fail("Der Tunnel kam nicht zustande.")
         print("Tunnel steht.")
 
+    return tunnel
+
+
+def close_tunnel(tunnel: subprocess.Popen | None) -> None:
+    if tunnel is not None and tunnel.poll() is None:
+        tunnel.terminate()
+        print("SSH-Tunnel geschlossen (die Daten sind schon geladen).", flush=True)
+
+
+def cmd_replay(args: list[str]) -> None:
+    """Play recorded data back over MQTT, one message per minute, as if a node
+    were sending live (but 15x faster than node 101). Arrives as device <id>-sim.
+
+        python start.py replay-history                 course history DB (node 101), via SSH
+        python start.py replay-history --csv           sample recording TSN-002, no SSH needed
+        python start.py replay-history --interval 10   one message every 10 seconds
+    """
+    check_docker()
+    if not ENV_FILE.exists():
+        fail("Noch nicht eingerichtet - zuerst 'python start.py' ausführen.")
+    env = read_env()
+    if is_real_mode(env):
+        fail("Die Wiedergabe sendet an den lokalen Test-Broker - der Collector hört im Echt-Modus aber auf den\n"
+             "Kurs-Broker. Bitte zuerst umschalten:  python start.py mode test")
+    interval = "60"
+    if "--interval" in args:
+        i = args.index("--interval")
+        interval = args[i + 1] if i + 1 < len(args) else interval
+    use_csv = "--csv" in args
+    compose("up", "-d", "db", "mqtt", "collector")
+
+    native = _native_python_ready()
+    publisher = ["batterywatch.tools.test_publisher"]
+    replay = ["replay", "--interval", interval, "--as-live", "--suffix=-sim"]
+    if use_csv:
+        replay.append(("../docs/samples/" if native else "/samples/") + "traffic_devices_signals.csv")
+    say("Spiele aufgezeichnete Daten ab: " + ("Beispielaufzeichnung TSN-002" if use_csv else "Kurs-Datenbank (Node 101)"))
+    print("Auf der Webseite erscheint das Gerät mit der Endung '-sim' (z. B. 101-sim) und füllt sich nach und nach.")
+
+    tunnel, extra_env = None, {}
     try:
-        password = ask_course_db_password()
-        say("Lese die Kurs-Datenbank")
-        run_import_tool(["history", *extra_args], password)
+        if not use_csv:
+            tunnel = open_tunnel()
+            password = ask_course_db_password()
+            host = "127.0.0.1" if native else "host.docker.internal"
+            extra_env["SOURCE_DSN"] = (f"host={host} port={TUNNEL_PORT} dbname=measurements "
+                                       f"user={COURSE_USER} password={password}")
+        if native:
+            cmd = [sys.executable, "-m", *publisher, "--host", "127.0.0.1", "--port", env.get("MQTT_PORT", "20883"), *replay]
+            cwd = BACKEND
+        else:
+            print("(im Docker-Container - schneller startet es mit: python -m pip install -r backend/requirements-dev.txt)")
+            cmd = ["docker", "compose", "--profile", "tools", "run", "--rm", "-T"]
+            cmd += ["-e", "SOURCE_DSN"] if extra_env else []
+            cmd += ["tools", "python", "-m", *publisher, "--host", "mqtt", "--port", "1883", *replay]
+            cwd = ROOT
+        proc = subprocess.Popen(cmd, cwd=cwd, env={**os.environ, **extra_env, "PYTHONUNBUFFERED": "1"},
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
+        try:
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                if "Nachrichten geladen" in line:
+                    close_tunnel(tunnel)  # everything is in memory, the server isn't needed anymore
+        except KeyboardInterrupt:
+            proc.terminate()
+            print("\nWiedergabe abgebrochen. Bereits gesendete Daten bleiben in der Datenbank.")
+        proc.wait()
     finally:
-        if tunnel is not None:
-            tunnel.terminate()
-            print("\nSSH-Tunnel geschlossen.")
+        close_tunnel(tunnel)
 
 
 def ask_course_db_password() -> str:
@@ -437,6 +515,7 @@ COMMANDS = {
     "demo": lambda args: cmd_demo(),
     "reset-password": lambda args: cmd_reset_password(args[0] if args else ""),
     "check-history": lambda args: cmd_history(["--check", *args]),
+    "replay-history": lambda args: cmd_replay(args),
     "import-history": lambda args: cmd_history(args),
 }
 

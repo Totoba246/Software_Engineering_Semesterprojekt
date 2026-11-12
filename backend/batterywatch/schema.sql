@@ -100,8 +100,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 
--- Device master data: the assigned technician (one per device, F09) and a
--- manual position for nodes without GPS (node 101 sends lat/lon = null).
+-- Device master data: the assigned technician (one per device, F09).
+-- The position is NOT master data: it is the average GPS position of the
+-- last days (see api/queries.py). Earlier versions had manual coordinates.
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS technician_id INTEGER REFERENCES users (id) ON DELETE SET NULL;
-ALTER TABLE devices ADD COLUMN IF NOT EXISTS manual_latitude DOUBLE PRECISION;
-ALTER TABLE devices ADD COLUMN IF NOT EXISTS manual_longitude DOUBLE PRECISION;
+ALTER TABLE devices DROP COLUMN IF EXISTS manual_latitude;
+ALTER TABLE devices DROP COLUMN IF EXISTS manual_longitude;

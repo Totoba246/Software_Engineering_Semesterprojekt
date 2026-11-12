@@ -35,6 +35,11 @@ Modes::
     # replay the recorded sample data over MQTT (as fast as possible, moved to "now")
     python -m batterywatch.tools.test_publisher replay ../docs/samples/traffic_devices_signals.csv --shift-to-now
 
+    # replay the course history database: one message per minute, like a live node,
+    # as device 101-sim (start.py replay-history does this incl. the SSH tunnel)
+    SOURCE_DSN="host=... dbname=measurements ..." python -m batterywatch.tools.test_publisher \
+        replay --interval 60 --as-live --suffix=-sim
+
 Broker settings come from MQTT_HOST / MQTT_PORT / MQTT_USERNAME / MQTT_PASSWORD / MQTT_TLS
 (or --host / --port).
 """
@@ -45,6 +50,7 @@ import argparse
 import json
 import logging
 import math
+import os
 import random
 import ssl
 import sys
@@ -284,20 +290,56 @@ def backfill_into_database(nodes: list[SimulatedNode], times: list[datetime], rn
     log.info("backfilled %d measurements directly into the database", inserted)
 
 
-def run_replay(args, pub: Publisher) -> None:
-    rows = read_sample_csv(args.file, device_id=args.device_id)
+def load_replay_rows(args) -> list[Measurement]:
+    """Recorded messages, oldest first: from a CSV file or from a database
+    (e.g. the course history database, columns detected automatically)."""
+    if args.source_dsn:
+        from .history_source import auto_query
+        from .import_data import _rows_from_sql
+
+        rows = _rows_from_sql(args.source_dsn, auto_query(args.source_dsn, None, args.device_id))
+    elif args.file:
+        rows = read_sample_csv(args.file, device_id=args.device_id)
+    else:
+        raise SystemExit("Bitte eine CSV-Datei angeben oder --source-dsn / $SOURCE_DSN setzen.")
     if args.shift_to_now:
         rows = list(shift_to(rows, datetime.now(timezone.utc)))
-    log.info("replaying %d rows (speed=%s)", len(rows), args.speed or "max")
+    return rows
+
+
+def run_replay(args, pub: Publisher) -> None:
+    """Send recorded messages again, one after another.
+
+    --interval 60  -> one message per minute (node 101 sends every 15 min, so 15x faster)
+    --as-live      -> without timestamp, like node 101: the collector uses the receive
+                      time, so the device behaves exactly like a live node
+    --suffix -sim  -> e.g. device 101 arrives as 101-sim (doesn't mix with real data)
+    """
+    rows = load_replay_rows(args)
+    total = len(rows)
+    pace = f"alle {args.interval:g} s" if args.interval else (f"Faktor {args.speed:g}" if args.speed else "so schnell wie möglich")
+    # start.py waits for this line to close the SSH tunnel early (the data is in memory now)
+    print(f"{total} Nachrichten geladen - sende {pace}. Abbrechen mit Strg+C.", flush=True)
+    if args.interval and total:
+        print(f"Dauer: ca. {total * args.interval / 3600:.1f} Std.", flush=True)
+
     previous = None
-    for m in rows:
-        if args.speed and previous is not None:
+    for i, m in enumerate(rows, start=1):
+        if args.interval and i > 1:
+            time.sleep(args.interval)
+        elif args.speed and previous is not None:
             time.sleep(max(0.0, (m.measured_at - previous).total_seconds() / args.speed))
         previous = m.measured_at
+        device_id = m.device_id + (args.suffix or "")
         payload = build_payload(
-            m.current_ma, m.voltage_mv, m.measured_at, m.latitude, m.longitude, m.altitude_m, m.satellites
+            m.current_ma, m.voltage_mv, None if args.as_live else m.measured_at,
+            m.latitude, m.longitude, m.altitude_m, m.satellites, m.temperature_c,
         )
-        pub.send(build_topic(m.device_id), payload)
+        pub.send(build_topic(device_id), payload)
+        if args.interval or i % 200 == 0 or i == total:
+            volts = f"{m.voltage_mv / 1000:.2f} V" if m.voltage_mv < 1e6 else f"{m.voltage_mv:.0f} mV (Lesefehler)"
+            original = m.measured_at.astimezone(BERLIN).strftime("%d.%m.%Y %H:%M")
+            print(f"[{i}/{total}] {device_id}: {volts}, {m.current_ma / 1000:.3f} A  (Original vom {original})", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -322,9 +364,15 @@ def main(argv: list[str] | None = None) -> int:
     p_sim.add_argument("--once", action="store_true", help="publish one live message per node and exit")
     p_sim.add_argument("--seed", type=int, default=42)
 
-    p_rep = sub.add_parser("replay", help="publish recorded sample data")
-    p_rep.add_argument("file")
-    p_rep.add_argument("--device-id", help="publish under this device id instead of the one in the file")
+    p_rep = sub.add_parser("replay", help="publish recorded data again (CSV file or database)")
+    p_rep.add_argument("file", nargs="?", help="CSV file (docs/samples/...); or use --source-dsn")
+    p_rep.add_argument("--source-dsn", default=os.environ.get("SOURCE_DSN"),
+                       help="read from this database instead, e.g. the course history DB (default: $SOURCE_DSN)")
+    p_rep.add_argument("--device-id", help="publish under this device id instead of the one in the data")
+    p_rep.add_argument("--suffix", default="", help="append to the device id, e.g. -sim -> 101-sim")
+    p_rep.add_argument("--interval", type=float, default=0, help="fixed seconds between messages, e.g. 60")
+    p_rep.add_argument("--as-live", action="store_true",
+                       help="send without timestamp (like node 101): the collector uses the receive time")
     p_rep.add_argument("--shift-to-now", action="store_true", help="move timestamps so the data ends today")
     p_rep.add_argument("--speed", type=float, default=0, help="time factor, e.g. 600 = 10 min per second; 0 = max")
 

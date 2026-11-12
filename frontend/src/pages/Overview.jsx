@@ -29,6 +29,14 @@ const SORTS = {
   seen: { label: 'Letzte Meldung', fn: (a, b) => (a.minutes_since_last_seen ?? 1e12) - (b.minutes_since_last_seen ?? 1e12) },
 }
 
+// remembered per browser; storage can be unavailable (private window) -> just don't remember
+function readFlag(key) {
+  try { return localStorage.getItem(key) === '1' } catch { return false }
+}
+function writeFlag(key, value) {
+  try { localStorage.setItem(key, value ? '1' : '0') } catch { /* ignore */ }
+}
+
 const distinct = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'))
 
 function EmptyList({ me }) {
@@ -56,6 +64,9 @@ export default function Overview({ devices, rules, me }) {
   const [staleOnly, setStaleOnly] = useState(false)
   const [sort, setSort] = useState('urgency')
   const [hoverId, setHoverId] = useState(null)
+  // the extra filters fold away so the list keeps its space; the browser remembers the choice
+  const [moreOpen, setMoreOpen] = useState(() => readFlag('bw.filtersOpen'))
+  const toggleMore = () => { setMoreOpen(!moreOpen); writeFlag('bw.filtersOpen', !moreOpen) }
   const manager = isManagement(me)
 
   const all = devices ?? []
@@ -88,7 +99,8 @@ export default function Overview({ devices, rules, me }) {
     [base, status, sort],
   )
 
-  const filtered = query || status !== 'alle' || category || location || technician || staleOnly
+  const moreActive = [category, location, technician, staleOnly].filter(Boolean).length
+  const filtered = Boolean(query) || status !== 'alle' || moreActive > 0 // a bare 0 would be printed by React
   const reset = () => {
     setQuery(''); setStatus('alle'); setCategory(null); setLocation(''); setTechnician(''); setStaleOnly(false)
   }
@@ -97,66 +109,58 @@ export default function Overview({ devices, rules, me }) {
     <section className="overview" aria-label="Geräteübersicht">
       <aside className="side">
         <div className="filters">
-          {manager && <Link className="btn add-btn" to="/geraete/neu">+ Gerät hinzufügen</Link>}
-          <label className="field">
-            <span>Suche</span>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, Geräte-ID, Ort …" />
-          </label>
-          <fieldset>
-            <legend>Akkustand</legend>
-            <div className="seg">
-              {STATUS_FILTERS.map((s) => (
-                <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)} className={`s-${s}`}>
-                  {s !== 'alle' && <i className="dot" />}
-                  {s === 'alle' ? 'Alle' : STATUS_LABEL[s]} <span className="n">{counts[s]}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          {categories.length > 0 && (
-            <fieldset>
-              <legend>Kategorie</legend>
-              <div className="chips">
-                {categories.map((c) => (
-                  <button key={c} type="button" className="chip" aria-pressed={category === c} onClick={() => setCategory(category === c ? null : c)}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          )}
-          <div className="two">
-            {locations.length > 0 && (
-              <label className="field">
-                <span>Ort</span>
-                <select value={location} onChange={(e) => setLocation(e.target.value)}>
-                  <option value="">Alle Orte</option>
-                  {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </label>
-            )}
-            {manager && (
-              <label className="field">
-                <span>Servicetechniker</span>
-                <select value={technician} onChange={(e) => setTechnician(e.target.value)}>
-                  <option value="">Alle</option>
-                  <option value={UNASSIGNED}>– nicht zugeordnet –</option>
-                  {technicians.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-            )}
-          </div>
-          <div className="chips">
-            <button type="button" className="chip" aria-pressed={staleOnly} onClick={() => setStaleOnly(!staleOnly)}>
-              Ohne aktuelle Meldung (&gt; {rules?.stale_after_minutes ?? 45} Min.)
+          <div className="filter-top">
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="Suche: Name, Geräte-ID, Ort …" aria-label="Geräte suchen" />
+            <button type="button" className="btn-s" aria-expanded={moreOpen} onClick={toggleMore}>
+              Filter{moreActive ? ` · ${moreActive}` : ''} {moreOpen ? '▴' : '▾'}
             </button>
+            {manager && <Link className="btn btn-sm" to="/geraete/neu" title="Gerät hinzufügen">+ Gerät</Link>}
           </div>
-          <label className="field">
-            <span>Sortierung</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              {Object.entries(SORTS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
-            </select>
-          </label>
+          <div className="seg" role="group" aria-label="Nach Akkustand filtern">
+            {STATUS_FILTERS.map((s) => (
+              <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)} className={`s-${s}`}>
+                {s !== 'alle' && <i className="dot" />}
+                {s === 'alle' ? 'Alle' : STATUS_LABEL[s]} <span className="n">{counts[s]}</span>
+              </button>
+            ))}
+          </div>
+          {moreOpen && (
+            <div className="more-filters">
+              {categories.length > 0 && (
+                <div className="chips" role="group" aria-label="Kategorie">
+                  {categories.map((c) => (
+                    <button key={c} type="button" className="chip" aria-pressed={category === c} onClick={() => setCategory(category === c ? null : c)}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="two">
+                {locations.length > 0 && (
+                  <select value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Ort">
+                    <option value="">Alle Orte</option>
+                    {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                )}
+                {manager && (
+                  <select value={technician} onChange={(e) => setTechnician(e.target.value)} aria-label="Servicetechniker">
+                    <option value="">Alle Techniker</option>
+                    <option value={UNASSIGNED}>– nicht zugeordnet –</option>
+                    {technicians.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                )}
+              </div>
+              <div className="two">
+                <button type="button" className="chip" aria-pressed={staleOnly} onClick={() => setStaleOnly(!staleOnly)}>
+                  Ohne Meldung &gt; {rules?.stale_after_minutes ?? 45} Min.
+                </button>
+                <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sortierung">
+                  {Object.entries(SORTS).map(([k, s]) => <option key={k} value={k}>Sortierung: {s.label}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
           {filtered && <button type="button" className="reset" onClick={reset}>Filter zurücksetzen</button>}
         </div>
         <div className="list-head">

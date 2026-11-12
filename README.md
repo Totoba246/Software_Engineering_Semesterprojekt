@@ -154,7 +154,7 @@ Details (Tests, Import, Entwicklung): [docs/Entwicklung.md](docs/Entwicklung.md)
 | F04 | Wechselprognose | 🟡 einfache Schätzung „voraussichtlich kritisch/leer“ aus dem 72-Std.-Trend |
 | F05 | Filter/Sortierung | ✅ Status, Kategorie, Ort, Servicetechniker, Suche, Sortierung |
 | F06 | Login/Rollen | ✅ Admin, Firmenchef, Mitarbeiter, Servicetechniker (ADR-09) |
-| F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen; Name, Kategorie, Ort, Position |
+| F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen; Name, Kategorie, Ort (Position kommt per GPS, Mittel der letzten 3 Tage) |
 | F08 | Datenaufnahme MQTT | ✅ Collector + Import der Kurs-Datenbank |
 | F09 | Techniker-Zuordnung | ✅ je Gerät ein Servicetechniker; Techniker sieht nur seine Geräte |
 | F10 | Kartenansicht | ✅ Karte in der Übersicht und Detailansicht |

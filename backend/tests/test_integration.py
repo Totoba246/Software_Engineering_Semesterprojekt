@@ -323,3 +323,41 @@ def test_import_history_with_course_database_layout(db_url, db, capsys):
         assert "payload.voltage_mV: 1" in text
     finally:
         db.execute("DROP SCHEMA history CASCADE")
+
+
+def test_replay_as_live_over_mqtt(db_url, db, tmp_path):
+    """Recorded data played back like a live node: own device id (suffix), receive time
+    instead of the original time, values unchanged, read errors still rejected."""
+    host = os.environ.get("TEST_MQTT_HOST")
+    if not host:
+        pytest.skip("TEST_MQTT_HOST not set")
+    port = int(os.environ.get("TEST_MQTT_PORT", "1883"))
+    csv_file = tmp_path / "rec.csv"
+    csv_file.write_text(
+        "_time,device_id,tenant,current_A,voltage_V,latitude,longitude\n"
+        "2026-10-14T13:26:00Z,101,,-0.29,12.71,,\n"
+        "2026-10-14T13:41:00Z,101,,-0.30,12.70,,\n"
+        "2026-11-04T13:49:00Z,101,,-0.00125,5368709.12,,\n"
+    )
+    settings = make_settings(db_url, mqtt_host=host, mqtt_port=port, mqtt_client_id=f"bw-test-{time.time_ns()}")
+    collector = Collector(settings, MeasurementStore(db_url))
+    client = build_client(settings, collector)
+    subscribed = threading.Event()
+    client.on_subscribe = lambda *a, **k: subscribed.set()
+    client.connect(host, port)
+    client.loop_start()
+    try:
+        assert subscribed.wait(10)
+        started = datetime.now(timezone.utc)
+        test_publisher.main(["--host", host, "--port", str(port), "replay", str(csv_file),
+                             "--interval", "0.2", "--as-live", "--suffix=-sim"])
+        deadline = time.time() + 10
+        while time.time() < deadline and sum(collector.stats.values()) < 3:
+            time.sleep(0.1)
+    finally:
+        client.loop_stop()
+        client.disconnect()
+    rows = db.execute("SELECT device_id, measured_at, voltage_mv FROM measurements ORDER BY measured_at").fetchall()
+    assert [(r[0], r[2]) for r in rows] == [("101-sim", 12710.0), ("101-sim", 12700.0)]
+    assert all(r[1] >= started - timedelta(seconds=1) for r in rows)  # receive time, not October
+    assert collector.stats["rejected"] == 1  # the read error is rejected as usual

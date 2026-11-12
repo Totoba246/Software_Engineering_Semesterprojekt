@@ -105,6 +105,9 @@ class Settings:
     # The traffic light dims at night, so the load (and the voltage under load)
     # changes over the day. The "current" voltage is averaged over this window.
     smoothing_minutes: int = field(default_factory=lambda: int(_env("SMOOTHING_MINUTES", "60")))
+    # The shown position is the average of the GPS positions of this many days
+    # (counted back from the newest GPS fix). Smooths out GPS jitter.
+    position_days: int = field(default_factory=lambda: int(_env("POSITION_DAYS", "3")))
     # Node 101 sends every 15 minutes; no valid measurement for this long (3 missed
     # messages) marks a device as stale (shown in red as "outdated").
     stale_after_minutes: int = field(default_factory=lambda: int(_env("STALE_AFTER_MINUTES", "45")))

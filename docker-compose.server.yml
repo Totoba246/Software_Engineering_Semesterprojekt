@@ -30,6 +30,7 @@ x-backend-env: &backend-env
   STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
   SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
   STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}
+  POSITION_DAYS: ${POSITION_DAYS:-3}
   # Login (ADR-09, explained in backend/batterywatch/config.py)
   SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
   COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS

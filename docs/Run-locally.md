@@ -55,7 +55,8 @@ Demo password: `demo1234` (only for trying out locally – never on the server).
 - **Add a node:** as Firmenchef/Mitarbeiter → *+ Gerät hinzufügen*. The device ID must be the one in
   the node's MQTT topic (`traffic-nodes/101/measurements` → `101`). Nodes that just start sending are
   added automatically anyway; you can then give them a name, place, category and technician on their
-  detail page (*Stammdaten → Bearbeiten*). Nodes without GPS (like node 101) can get a position by hand.
+  detail page (*Stammdaten → Bearbeiten*). The position on the map always comes from the node's GPS
+  (average of the last 3 days); a node without GPS (like node 101 right now) has no position.
 
 ## Everyday commands
 
@@ -68,6 +69,7 @@ Demo password: `demo1234` (only for trying out locally – never on the server).
 | `python start.py mode real` | switch to the real node 101 (asks for the MQTT password) |
 | `python start.py mode test` | switch to the 8 fake nodes |
 | `python start.py demo` | demo accounts + names/places/technicians for the fake nodes |
+| `python start.py replay-history` | play the course history back, one message per minute (device `101-sim`) |
 | `python start.py reset-password NAME` | set a new password for an account |
 | `python start.py reset` | ⚠️ delete ALL local data and start from zero |
 | `python start.py help` | list of commands |
@@ -99,7 +101,26 @@ when asked (both from `tinf25d-llv.yaml`):
    also ask `Are you sure you want to continue connecting?` → type `yes`.
 2. `Passwort der Kurs-DATENBANK` → the **postgres** password (`postgres: passwort:`).
 
-`check-history` changes nothing; it only prints a report. Paste it to Claude/your team
+`check-history` changes nothing; it only prints a report.
+
+### Watch the history arrive like live data
+
+```bash
+python start.py replay-history                 # course database (node 101), one message per minute
+python start.py replay-history --csv           # sample recording TSN-002 instead (no SSH needed)
+python start.py replay-history --interval 10   # one message every 10 seconds
+```
+
+The recorded messages are sent again over MQTT, one after another, exactly like a node would send
+them - just faster (node 101: every 15 min, replay: every minute). They arrive as their own device
+**`101-sim`** (or `TSN-002-sim`), so they never mix with real data, and you can watch the overview,
+chart and warning banner update. Needs **test mode** (`python start.py mode test`), because the replay
+goes to the local test broker. The SSH connection is only needed at the start (to load the data);
+Ctrl+C stops the replay, everything sent so far stays in the database.
+
+Note: the messages get the time at which they arrive, so the chart is "time-lapse": one hour on the
+chart is 60 original messages (= 15 hours of node 101). Day/night shading and the prediction refer to
+the replay time, not the original. Paste it to Claude/your team
 to decide from when on the data is garbage, then import with `--to`.
 
 ## What is where on your computer

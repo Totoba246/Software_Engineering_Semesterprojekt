@@ -2,6 +2,7 @@
  * FORM FOR DEVICE MASTER DATA (F07) + technician assignment (F09).
  * Used to add a node (pages/NewDevice.jsx) and to edit one (DeviceDetail.jsx).
  * Only Firmenchef/Mitarbeiter see it; the server checks that again.
+ * No coordinates: the position always comes from the node's GPS.
  */
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
@@ -18,9 +19,6 @@ export default function DeviceForm({ device, onSubmit, onCancel, submitLabel = '
     name: device && device.name !== device.device_id ? device.name : '',
     category: toInput(device?.category),
     location: toInput(device?.location),
-    // only a MANUAL position is editable; a GPS position comes from the node itself
-    latitude: device?.position?.source === 'manuell' ? toInput(device.position.latitude) : '',
-    longitude: device?.position?.source === 'manuell' ? toInput(device.position.longitude) : '',
     technician_id: toInput(device?.technician?.id),
   })
   const [technicians, setTechnicians] = useState([])
@@ -35,17 +33,11 @@ export default function DeviceForm({ device, onSubmit, onCancel, submitLabel = '
 
   async function submit(e) {
     e.preventDefault()
-    const number = (v) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
     const data = {
       name: form.name, category: form.category, location: form.location,
       technician_id: form.technician_id ? Number(form.technician_id) : null,
     }
     if (isNew) data.device_id = form.device_id.trim()
-    if (isNew || device.position?.source !== 'gps') {
-      data.latitude = number(form.latitude)
-      data.longitude = number(form.longitude)
-      if (Number.isNaN(data.latitude) || Number.isNaN(data.longitude)) return setError('Koordinaten bitte als Zahl, z. B. 48.168')
-    }
     setBusy(true)
     setError('')
     try {
@@ -81,20 +73,7 @@ export default function DeviceForm({ device, onSubmit, onCancel, submitLabel = '
           <input type="text" value={form.location} onChange={set('location')} maxLength={120} placeholder="z. B. Rottweil" />
         </label>
       </div>
-      {isNew || device.position?.source !== 'gps' ? (
-        <div className="two">
-          <label className="field">
-            <span>Breitengrad (ohne GPS)</span>
-            <input type="text" inputMode="decimal" value={form.latitude} onChange={set('latitude')} placeholder="48.168" />
-          </label>
-          <label className="field">
-            <span>Längengrad (ohne GPS)</span>
-            <input type="text" inputMode="decimal" value={form.longitude} onChange={set('longitude')} placeholder="8.628" />
-          </label>
-        </div>
-      ) : (
-        <p className="hint">Position kommt per GPS vom Gerät.</p>
-      )}
+      <p className="hint">Die Position auf der Karte kommt automatisch vom GPS des Geräts (Durchschnitt der letzten Tage).</p>
       <label className="field">
         <span>Zugeordneter Servicetechniker</span>
         <select value={form.technician_id} onChange={set('technician_id')}>

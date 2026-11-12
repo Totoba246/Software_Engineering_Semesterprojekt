@@ -37,11 +37,14 @@ class StatusRules(BaseModel):
 
 # --- Devices -----------------------------------------------------------------------
 class Position(BaseModel):
+    """Average of the node's GPS positions over the last POSITION_DAYS days."""
+
     latitude: float
     longitude: float
     altitude_m: float | None = None
     satellites: int | None = None
-    source: Literal["gps", "manuell"] = "gps"  # from the node, or entered by hand
+    fixes: int  # number of GPS readings averaged
+    days: int   # averaging window
 
 
 class Technician(BaseModel):
@@ -92,10 +95,9 @@ class DeviceWrite(BaseModel):
 
     name: str | None = Field(None, max_length=100)
     category: str | None = Field(None, max_length=60)
-    location: str | None = Field(None, max_length=120)
-    latitude: float | None = Field(None, ge=-90, le=90)    # manual position for nodes without GPS
-    longitude: float | None = Field(None, ge=-180, le=180)
+    location: str | None = Field(None, max_length=120)   # place name, e.g. "Rottweil"
     technician_id: int | None = None
+    # No coordinates here: the position always comes from the node's GPS.
 
     _blank = field_validator("name", "category", "location", mode="before")(_blank_to_none)
 

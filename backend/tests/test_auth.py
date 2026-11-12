@@ -112,13 +112,12 @@ def test_add_edit_and_delete_device(make_client, db_url, db):
     make_client("techniker", "jonas")
     jonas = user_id(db, "jonas")
 
-    # add a node before it ever sent anything (e.g. node 101 without GPS -> manual position)
+    # add a node before it ever sent anything (no coordinates: the position comes from GPS)
     r = chef.post("/api/devices", json={"device_id": "101", "name": "BA-01 Hauptstraße", "category": "Baustellenampel",
-                                        "location": "Rottweil", "latitude": 48.168, "longitude": 8.628,
-                                        "technician_id": jonas})
+                                        "location": "Rottweil", "technician_id": jonas})
     assert r.status_code == 201, r.text
     d = r.json()
-    assert d["status"] == "unbekannt" and d["position"]["source"] == "manuell"
+    assert d["status"] == "unbekannt" and d["position"] is None
     assert d["technician"]["id"] == jonas
     assert chef.post("/api/devices", json={"device_id": "101"}).status_code == 409   # exists
     assert chef.post("/api/devices", json={"device_id": "1 01"}).status_code == 422  # not a valid topic id
@@ -132,7 +131,6 @@ def test_add_edit_and_delete_device(make_client, db_url, db):
     r = chef.patch("/api/devices/101", json={"location": "Rottweil, Marktplatz", "technician_id": None})
     assert r.json()["location"] == "Rottweil, Marktplatz" and r.json()["technician"] is None
     assert r.json()["category"] == "Baustellenampel"
-    assert chef.patch("/api/devices/101", json={"latitude": 48.1}).status_code == 400  # longitude missing
     assert chef.patch("/api/devices/101", json={"technician_id": user_id(db, "chef")}).status_code == 400  # not a technician
 
     assert chef.delete("/api/devices/101").status_code == 204
@@ -231,3 +229,18 @@ def test_manage_cli_create_user_and_seed_demo(db_url, db, monkeypatch, capsys):
     assert assigned.fetchone()[0] == 7  # SIM-006 deliberately has no technician
     manage.main(["--database-url", db_url, "seed-demo"])  # running it again is harmless
     assert db.execute("SELECT count(*) FROM users").fetchone()[0] == 5
+
+
+def test_position_is_the_average_gps_position_of_the_last_days(make_client, db_url):
+    chef = make_client("chef")
+    store = MeasurementStore(db_url)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    # 5 days ago somewhere else (outside the 3-day window), then two positions within it
+    for days_ago, lat, lon in ((5, 40.0, 5.0), (2, 48.0, 8.0), (1, 48.2, 8.2)):
+        payload = build_payload(600, 12000, now - timedelta(days=days_ago), lat=lat, lon=lon, altitude_m=600, satellites=8)
+        store.save(parse_message(build_topic("101"), payload))
+    store.save(parse_message(build_topic("101"), build_payload(600, 12000, now)))  # newest: no GPS fix
+    store.close()
+    pos = chef.get("/api/devices/101").json()["position"]
+    assert pos["latitude"] == pytest.approx(48.1) and pos["longitude"] == pytest.approx(8.1)
+    assert pos["fixes"] == 2 and pos["days"] == 3
