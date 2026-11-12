@@ -1,0 +1,99 @@
+# =============================================================================
+#  DEPLOY STEP 2 of 3: what runs on the course server
+# =============================================================================
+#  (Sketch: "Server -> Docker Compose -> ghcr...repo")
+#
+#  Same system as docker-compose.yml (read the comments there first), but:
+#   - NO building on the server: the images are the finished ones that GitHub
+#     built and uploaded (step 1: .github/workflows/deploy.yml) to ghcr.io.
+#     `docker compose pull` downloads the newest ones.
+#   - no local test MQTT broker and no fake nodes: the collector listens to the
+#     course broker mqtt.ti-labs.ai (settings in .env).
+#
+#  On the server, .env contains COMPOSE_FILE=docker-compose.server.yml, so every
+#  plain `docker compose ...` command there automatically uses THIS file.
+#  (deploy/setup-server.sh sets that up.)
+#
+#  Update by hand:   docker compose pull && docker compose up -d
+#  Automatically:    every 5 minutes by the systemd timer (step 3: deploy/batterywatch-update.*)
+#
+#  Ports on the server (group LLV: 20800-20899), same as locally:
+#    20800 web page (internet) | 20801 API (server only) | 20832 database (server only / DB_BIND)
+# =============================================================================
+
+# Shared settings of the Python containers (same as in docker-compose.yml)
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-batterywatch}:${POSTGRES_PASSWORD:-batterywatch}@db:5432/${POSTGRES_DB:-batterywatch}
+  SHUNT_RESISTANCE_OHM: ${SHUNT_RESISTANCE_OHM:-0.002}
+  BATTERY_SOC_CURVE: ${BATTERY_SOC_CURVE:-10.5:0,12.7:100}
+  STATUS_CRITICAL_BELOW: ${STATUS_CRITICAL_BELOW:-20}
+  STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
+  SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
+  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}
+  POSITION_DAYS: ${POSITION_DAYS:-3}
+  # Login (ADR-09, explained in backend/batterywatch/config.py)
+  SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS
+  LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}             # wrong passwords before a short block
+  LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-5}
+
+# Where the images come from. IMAGE_TAG=latest = always the newest;
+# set e.g. IMAGE_TAG=1a2b3c4 in .env to stay on (or go back to) one version.
+x-backend-image: &backend-image ${IMAGE_PREFIX:-ghcr.io/totoba246/batterywatch}-backend:${IMAGE_TAG:-latest}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-batterywatch}
+      POSTGRES_USER: ${POSTGRES_USER:-batterywatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-batterywatch}
+    volumes:
+      - db-data:/var/lib/postgresql/data      # the data survives updates
+    ports:
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-20832}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  collector:
+    image: *backend-image
+    command: ["python", "-m", "batterywatch.collector"]
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      MQTT_HOST: ${COLLECTOR_MQTT_HOST:-mqtt.ti-labs.ai}
+      MQTT_PORT: ${COLLECTOR_MQTT_PORT:-8883}
+      MQTT_TLS: ${COLLECTOR_MQTT_TLS:-true}
+      MQTT_USERNAME: ${COLLECTOR_MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${COLLECTOR_MQTT_PASSWORD:-}
+      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-nodes/+/measurements,traffic-device/+/+/+/status}
+      MQTT_CLIENT_ID: ${COLLECTOR_MQTT_CLIENT_ID:-batterywatch-llv-collector}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: *backend-image                      # the image's default command starts the API
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    ports:
+      - "127.0.0.1:${API_PORT:-20801}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ${IMAGE_PREFIX:-ghcr.io/totoba246/batterywatch}-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-20800}:80"                # the one port open to the internet
+    depends_on:
+      - api
+
+volumes:
+  db-data:

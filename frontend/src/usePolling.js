@@ -1,3 +1,9 @@
+/*
+ * "POLLING" = asking the server again and again at a fixed interval.
+ * The page asks for new data every 5 minutes (ADR-06), so it stays up to date
+ * without reloading. Nodes only send every 15 minutes anyway.
+ */
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // ADR-06: the frontend refreshes its data by polling every 5 minutes.

@@ -48,7 +48,9 @@ python -m batterywatch.tools.test_publisher --dry-run simulate --once        # n
 ```
 
 Das Batteriemodell ist an die echten TSN-002-Daten angelehnt: Tagstrom ≈ 0,63 A, nachts
-gedimmt ≈ 0,52 A, Spannungsabfall ≈ 0,1 V/Tag, Batteriewechsel bei leerem Akku.
+gedimmt ≈ 0,52 A, Spannungsabfall ≈ 0,1 V/Tag, Batteriewechsel bei leerem Akku, Temperatur
+im Tagesgang. Gesendet wird wie bei Node 101 auf `traffic-nodes/<id>/measurements`, standardmäßig
+alle 15 Minuten. `--invalid-every N` verschickt u. a. den Lesefehler von Node 101.
 `--rate` (Standard 300 Nachrichten/s) bremst große Sendungen – Mosquitto verwirft sonst
 QoS-1-Nachrichten, wenn die Warteschlange eines Abonnenten überläuft. Für lange Historie
 `--backfill-direct` verwenden (schreibt direkt in `$DATABASE_URL`).
@@ -74,6 +76,16 @@ docker compose --profile test run --rm publisher python -m batterywatch.tools.im
 Ein erneuter Import erzeugt keine Duplikate (eindeutig je Gerät + Zeitstempel).
 
 ### c) Historien-Datenbank des Kurses
+
+Auf dem Kursserver einfach `./deploy/import-history.sh` ausführen (siehe [Server.md](Server.md)) –
+Tabelle, Spalten und Einheiten werden automatisch erkannt:
+
+```bash
+python -m batterywatch.tools.import_data history --source-dsn "host=127.0.0.1 dbname=measurements user=tinf25d-llv password=..." --inspect
+python -m batterywatch.tools.import_data history --source-dsn "..."
+```
+
+Alternativ mit expliziter Abfrage:
 
 Die gemeinsame Historien-PostgreSQL (Port 5432, nur per SSH-Tunnel) lässt sich mit einer
 SQL-Abfrage übernehmen. Die Abfrage muss die Spalten `device_id, measured_at, current_ma,
@@ -141,11 +153,23 @@ Die GitHub-Action `.github/workflows/ci.yml` führt alle Tests (inkl. MQTT) und 
 
 ## REST-API
 
-| Endpunkt | Inhalt |
+Alle Endpunkte außer `health` und `auth/login` brauchen eine Anmeldung (Cookie `bw_session`).
+Spalte „Wer“: A = Admin, B = Firmenchef/Mitarbeiter, T = Servicetechniker (nur zugeordnete Geräte).
+
+| Endpunkt | Wer | Inhalt |
+|---|---|---|
+| `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | alle | anmelden, abmelden, „wer bin ich“ |
+| `POST /api/auth/password` | alle | eigenes Passwort ändern (Pflicht nach Start-Passwort) |
+| `GET/POST /api/users`, `PATCH/DELETE /api/users/{id}` | A | Nutzerverwaltung (Start-Passwort, Sperren, Rolle, Reset) |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/{id}` | B | Gerät anlegen, Stammdaten/Techniker ändern, löschen |
+| `GET /api/technicians` | B | Servicetechniker für die Zuordnung |
+
+| Endpunkt (lesen, B + T) | Inhalt |
 |---|---|
-| `GET /api/health` | Lebenszeichen inkl. DB |
+| `GET /api/health` | Lebenszeichen inkl. DB (ohne Anmeldung) |
 | `GET /api/devices` | alle Geräte mit aktuellem Zustand (geglättete Spannung, SoC, Status, Position, letzte Meldung) |
-| `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h, Spannungstrend V/Tag |
+| `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h, Spannungstrend V/Tag, Schätzung „voraussichtlich kritisch/leer“ |
+| `GET /api/devices/{id}/messages?limit=20` | letzte empfangene MQTT-Nachrichten inkl. verworfener (mit Grund) |
 | `GET /api/devices/{id}/history?hours=168` | Verlauf, zu Zeitintervallen zusammengefasst (Mittel/Min/Max); Zeitraum endet bei der letzten Meldung |
 | `GET /api/status-rules` | aktuell gültige Schwellwerte und Kennlinie |
 
@@ -155,7 +179,10 @@ Das Frontend fragt die Daten alle 5 Minuten neu ab (ADR-06).
 
 | Tabelle | Inhalt |
 |---|---|
-| `devices` | ein Eintrag je Gerät (wird beim ersten Messwert angelegt); `name`, `category`, `location` für Stammdaten (F07) |
-| `measurements` | ein Eintrag je Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, GPS, `source` (`mqtt`/`import`) |
+| `devices` | ein Eintrag je Gerät (beim ersten Messwert automatisch oder von Hand angelegt); Stammdaten `name`, `category`, `location`, `technician_id` (F07, F09). Die Position ist der Mittelwert der GPS-Positionen der letzten `POSITION_DAYS` (3) Tage |
+| `users` | Konten mit Rolle (`admin`, `chef`, `mitarbeiter`, `techniker`), Argon2-Passwort-Hash, gesperrt ja/nein |
+| `sessions` | angemeldete Browser (nur SHA-256-Hash des Cookie-Tokens), mit Ablaufzeit |
+| `measurements` | ein Eintrag je gültiger Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, `temperature_c`, GPS, `source` (`mqtt`/`import`) |
+| `raw_messages` | jede empfangene MQTT-Nachricht im Original, `accepted` + `error` (Grund der Ablehnung) |
 
 Eindeutig je `(device_id, measured_at)`; der zugehörige Index trägt alle Abfragen „letzte Werte / Verlauf eines Geräts“.

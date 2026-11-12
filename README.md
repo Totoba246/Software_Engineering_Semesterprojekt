@@ -125,18 +125,41 @@ Das Projekt wird **inkrementell** entwickelt.
 
 ---
 
-## 🚀 Schnellstart
+## 🚀 Schnellstart (auf dem eigenen Rechner)
+
+Voraussetzung: [Docker Desktop](https://www.docker.com/products/docker-desktop/) läuft, Python ist installiert.
 
 ```bash
-cp .env.example .env
-docker compose up -d --build                    # DB, Broker, Collector, API, Frontend
-docker compose --profile test up -d publisher   # simulierte TrafficNodes
+python start.py
 ```
 
-Frontend: http://localhost:20800 · API-Doku: http://localhost:20801/docs
+Beim ersten Start wird gefragt: echte Daten von Node 101 (MQTT-Passwort nötig) oder Testdaten.
+Danach öffnet sich http://localhost:20800. Weitere Befehle: `python start.py help`.
 
-Details (Testdaten, Import der Beispieldaten, Live-Broker, Tests): [docs/Entwicklung.md](docs/Entwicklung.md) ·
+**Anleitung Schritt für Schritt: [docs/Run-locally.md](docs/Run-locally.md)** ·
+**Wie alles zusammenhängt: [docs/How-it-works.md](docs/How-it-works.md)** ·
+Später auf dem Kursserver: [docs/Server.md](docs/Server.md) ·
+Details (Tests, Import, Entwicklung): [docs/Entwicklung.md](docs/Entwicklung.md) ·
 [MQTT-Vertrag](docs/MQTT-Vertrag.md) · [Statusregeln](docs/Statusregeln.md)
+
+---
+
+## ✅ Umsetzungsstand
+
+| ID | Anforderung | Stand |
+|---|---|---|
+| F01 | Geräteübersicht | ✅ Liste + Karte mit Akkustand, Status, letzter Meldung |
+| F02 | Statusregeln & Warnungen | 🟡 Regeln umgesetzt ([Statusregeln](docs/Statusregeln.md)), Warnhinweis in der Webseite; keine E-Mail/Push |
+| F03 | Verlaufsanzeige | ✅ 24 Std. / 7 / 30 Tage / gesamt, Akkustand, Spannung, Strom |
+| F04 | Wechselprognose | 🟡 einfache Schätzung „voraussichtlich kritisch/leer“ aus dem 72-Std.-Trend |
+| F05 | Filter/Sortierung | ✅ Status, Kategorie, Ort, Servicetechniker, Suche, Sortierung |
+| F06 | Login/Rollen | ✅ Admin, Firmenchef, Mitarbeiter, Servicetechniker (ADR-09) |
+| F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen; Name, Kategorie, Ort (Position kommt per GPS, Mittel der letzten 3 Tage) |
+| F08 | Datenaufnahme MQTT | ✅ Collector + Import der Kurs-Datenbank |
+| F09 | Techniker-Zuordnung | ✅ je Gerät ein Servicetechniker; Techniker sieht nur seine Geräte |
+| F10 | Kartenansicht | ✅ Karte in der Übersicht und Detailansicht |
+| F11 | Detailansicht | ✅ inkl. Stammdaten und zugeordnetem Techniker (nur Firmenchef/Mitarbeiter) |
+| F12, F13 | Kalender | ❌ noch offen (niedrige Priorität) |
 
 ---
 

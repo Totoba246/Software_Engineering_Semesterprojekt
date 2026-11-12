@@ -1,3 +1,11 @@
+/*
+ * THE MAP (library "Leaflet"). Shows every device that has a GPS position as a
+ * colored dot (green / yellow / red = battery status).
+ * The map pictures ("tiles") are loaded by the BROWSER directly from
+ * tile.openstreetmap.org - so the map background needs internet access.
+ * Devices without GPS (e.g. node 101 right now: lat/lon = null) don't appear on the map.
+ */
+
 import { useEffect, useMemo, useRef } from 'react'
 import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { Link } from 'react-router-dom'

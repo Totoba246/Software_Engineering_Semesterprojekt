@@ -1,3 +1,9 @@
+/*
+ * Small building blocks: the battery icon (filled to the % level, colored by
+ * status), "icon + percentage", and the color legend on the map.
+ * Colors come from the CSS classes s-ok / s-niedrig / s-krit in styles.css.
+ */
+
 import { pct } from '../format.js'
 
 export function BatteryIcon({ device }) {

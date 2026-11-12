@@ -50,3 +50,21 @@ def test_state_of_charge_unknown():
 )
 def test_classify_boundaries(soc, status):
     assert classify(soc) is status
+
+
+def test_voltage_for_soc_is_inverse_of_state_of_charge():
+    from batterywatch.battery import voltage_for_soc
+
+    assert voltage_for_soc(0, CURVE) == 10.5
+    assert voltage_for_soc(100, CURVE) == 12.7
+    assert voltage_for_soc(20, CURVE) == pytest.approx(10.94)
+    assert state_of_charge(voltage_for_soc(37, CURVE), CURVE) == pytest.approx(37)
+
+
+def test_hours_until():
+    from batterywatch.battery import hours_until
+
+    assert hours_until(11.5, 11.0, -0.25) == pytest.approx(48)  # 0.5 V at 0.25 V/day = 2 days
+    assert hours_until(11.5, 11.0, 0.1) is None  # rising: no estimate
+    assert hours_until(11.5, 11.0, None) is None
+    assert hours_until(10.9, 11.0, -0.1) == 0.0  # already below

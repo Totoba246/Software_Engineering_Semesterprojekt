@@ -1,10 +1,21 @@
+/*
+ * PAGE "Übersicht" / "Meine Geräte" (address /): device list left, map right.
+ *
+ * The device list comes from App.jsx (GET /api/devices). The SERVER already
+ * limits it by role: Servicetechniker only get their assigned devices.
+ * Here in the browser: search, filters (F05: status, category, place,
+ * technician), sorting. Clicking a device opens /geraete/<id>.
+ */
+
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { isManagement } from '../api.js'
 import { BatteryLevel, Legend } from '../components/Battery.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
 import { ago, STATUS_LABEL, STATUS_ORDER } from '../format.js'
 
 const STATUS_FILTERS = ['alle', 'krit', 'niedrig', 'ok']
+const UNASSIGNED = '__none__'
 
 const SORTS = {
   urgency: {
@@ -14,43 +25,68 @@ const SORTS = {
   },
   soc: { label: 'Akkustand', fn: (a, b) => (a.soc_percent ?? 999) - (b.soc_percent ?? 999) },
   name: { label: 'Name', fn: (a, b) => a.name.localeCompare(b.name, 'de') },
+  location: { label: 'Ort', fn: (a, b) => (a.location ?? '~').localeCompare(b.location ?? '~', 'de') },
   seen: { label: 'Letzte Meldung', fn: (a, b) => (a.minutes_since_last_seen ?? 1e12) - (b.minutes_since_last_seen ?? 1e12) },
 }
 
-function EmptyDatabase() {
+// remembered per browser; storage can be unavailable (private window) -> just don't remember
+function readFlag(key) {
+  try { return localStorage.getItem(key) === '1' } catch { return false }
+}
+function writeFlag(key, value) {
+  try { localStorage.setItem(key, value ? '1' : '0') } catch { /* ignore */ }
+}
+
+const distinct = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'))
+
+function EmptyList({ me }) {
+  if (me.role === 'techniker') {
+    return <div className="empty"><p><strong>Ihnen sind noch keine Geräte zugeordnet.</strong></p>
+      <p>Die Zuordnung machen Firmenchef oder Mitarbeiter in der Detailansicht eines Geräts.</p></div>
+  }
   return (
     <div className="empty">
-      <p><strong>Noch keine Geräte in der Datenbank.</strong></p>
-      <p>Sobald der Collector die erste MQTT-Nachricht speichert, erscheint das Gerät hier.</p>
-      <p>Zum Testen z. B. den Testpublisher starten:<br />
-        <code>docker compose --profile test up publisher</code></p>
-      <p>oder die Beispieldaten importieren:<br />
-        <code>python -m batterywatch.tools.import_data csv …</code></p>
+      <p><strong>Noch keine Geräte.</strong></p>
+      <p>Geräte erscheinen automatisch mit ihrer ersten MQTT-Nachricht – oder legen Sie eines an:
+        <Link to="/geraete/neu"> Gerät hinzufügen</Link>.</p>
+      <p>Zum Testen: <code>python start.py mode test</code> (erfundene Nodes).</p>
     </div>
   )
 }
 
-export default function Overview({ devices, rules }) {
+export default function Overview({ devices, rules, me }) {
+  const [params] = useSearchParams()
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('alle')
-  const [tenant, setTenant] = useState(null)
+  const [status, setStatus] = useState(STATUS_FILTERS.includes(params.get('status')) ? params.get('status') : 'alle')
+  const [category, setCategory] = useState(null)
+  const [location, setLocation] = useState('')
+  const [technician, setTechnician] = useState('')
   const [staleOnly, setStaleOnly] = useState(false)
   const [sort, setSort] = useState('urgency')
   const [hoverId, setHoverId] = useState(null)
+  // the extra filters fold away so the list keeps its space; the browser remembers the choice
+  const [moreOpen, setMoreOpen] = useState(() => readFlag('bw.filtersOpen'))
+  const toggleMore = () => { setMoreOpen(!moreOpen); writeFlag('bw.filtersOpen', !moreOpen) }
+  const manager = isManagement(me)
 
   const all = devices ?? []
-  const tenants = useMemo(() => [...new Set(all.map((d) => d.tenant))].sort(), [all])
+  const categories = useMemo(() => distinct(all.map((d) => d.category)), [all])
+  const locations = useMemo(() => distinct(all.map((d) => d.location)), [all])
+  const technicians = useMemo(() => distinct(all.map((d) => d.technician?.display_name)), [all])
 
   // Everything except the status filter (so the status buttons can show counts)
   const base = useMemo(() => {
     const q = query.trim().toLowerCase()
     return all.filter(
       (d) =>
-        (!tenant || d.tenant === tenant) &&
+        (!category || d.category === category) &&
+        (!location || d.location === location) &&
+        (!technician || (technician === UNASSIGNED ? !d.technician : d.technician?.display_name === technician)) &&
         (!staleOnly || d.stale) &&
-        (!q || [d.name, d.device_id, d.tenant, d.location, d.category].some((v) => v?.toLowerCase().includes(q))),
+        (!q || [d.name, d.device_id, d.tenant, d.location, d.category, d.technician?.display_name]
+          .some((v) => v?.toLowerCase().includes(q))),
     )
-  }, [all, query, tenant, staleOnly])
+  }, [all, query, category, location, technician, staleOnly])
 
   const counts = useMemo(() => {
     const c = { alle: base.length, krit: 0, niedrig: 0, ok: 0 }
@@ -63,51 +99,68 @@ export default function Overview({ devices, rules }) {
     [base, status, sort],
   )
 
-  const filtered = query || status !== 'alle' || tenant || staleOnly
-  const reset = () => { setQuery(''); setStatus('alle'); setTenant(null); setStaleOnly(false) }
+  const moreActive = [category, location, technician, staleOnly].filter(Boolean).length
+  const filtered = Boolean(query) || status !== 'alle' || moreActive > 0 // a bare 0 would be printed by React
+  const reset = () => {
+    setQuery(''); setStatus('alle'); setCategory(null); setLocation(''); setTechnician(''); setStaleOnly(false)
+  }
 
   return (
     <section className="overview" aria-label="Geräteübersicht">
       <aside className="side">
         <div className="filters">
-          <label className="field">
-            <span>Suche</span>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, Geräte-ID, Betreiber …" />
-          </label>
-          <fieldset>
-            <legend>Akkustand</legend>
-            <div className="seg">
-              {STATUS_FILTERS.map((s) => (
-                <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)} className={`s-${s}`}>
-                  {s !== 'alle' && <i className="dot" />}
-                  {s === 'alle' ? 'Alle' : STATUS_LABEL[s]} <span className="n">{counts[s]}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          {tenants.length > 1 && (
-            <fieldset>
-              <legend>Betreiber</legend>
-              <div className="chips">
-                {tenants.map((t) => (
-                  <button key={t} type="button" className="chip" aria-pressed={tenant === t} onClick={() => setTenant(tenant === t ? null : t)}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          )}
-          <div className="chips">
-            <button type="button" className="chip" aria-pressed={staleOnly} onClick={() => setStaleOnly(!staleOnly)}>
-              Ohne aktuelle Meldung (&gt; {rules?.stale_after_minutes ?? 30} Min.)
+          <div className="filter-top">
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="Suche: Name, Geräte-ID, Ort …" aria-label="Geräte suchen" />
+            <button type="button" className="btn-s" aria-expanded={moreOpen} onClick={toggleMore}>
+              Filter{moreActive ? ` · ${moreActive}` : ''} {moreOpen ? '▴' : '▾'}
             </button>
+            {manager && <Link className="btn btn-sm" to="/geraete/neu" title="Gerät hinzufügen">+ Gerät</Link>}
           </div>
-          <label className="field">
-            <span>Sortierung</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              {Object.entries(SORTS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
-            </select>
-          </label>
+          <div className="seg" role="group" aria-label="Nach Akkustand filtern">
+            {STATUS_FILTERS.map((s) => (
+              <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)} className={`s-${s}`}>
+                {s !== 'alle' && <i className="dot" />}
+                {s === 'alle' ? 'Alle' : STATUS_LABEL[s]} <span className="n">{counts[s]}</span>
+              </button>
+            ))}
+          </div>
+          {moreOpen && (
+            <div className="more-filters">
+              {categories.length > 0 && (
+                <div className="chips" role="group" aria-label="Kategorie">
+                  {categories.map((c) => (
+                    <button key={c} type="button" className="chip" aria-pressed={category === c} onClick={() => setCategory(category === c ? null : c)}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="two">
+                {locations.length > 0 && (
+                  <select value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Ort">
+                    <option value="">Alle Orte</option>
+                    {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                )}
+                {manager && (
+                  <select value={technician} onChange={(e) => setTechnician(e.target.value)} aria-label="Servicetechniker">
+                    <option value="">Alle Techniker</option>
+                    <option value={UNASSIGNED}>– nicht zugeordnet –</option>
+                    {technicians.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                )}
+              </div>
+              <div className="two">
+                <button type="button" className="chip" aria-pressed={staleOnly} onClick={() => setStaleOnly(!staleOnly)}>
+                  Ohne Meldung &gt; {rules?.stale_after_minutes ?? 45} Min.
+                </button>
+                <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sortierung">
+                  {Object.entries(SORTS).map(([k, s]) => <option key={k} value={k}>Sortierung: {s.label}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
           {filtered && <button type="button" className="reset" onClick={reset}>Filter zurücksetzen</button>}
         </div>
         <div className="list-head">
@@ -115,7 +168,7 @@ export default function Overview({ devices, rules }) {
           <span>Letzte Meldung</span>
         </div>
         {devices && all.length === 0 ? (
-          <EmptyDatabase />
+          <EmptyList me={me} />
         ) : shown.length === 0 && devices ? (
           <div className="empty">
             <p>Keine Geräte passen zu den Filtern.</p>
@@ -135,12 +188,19 @@ export default function Overview({ devices, rules }) {
                   <span className="info">
                     <span className="name">{d.name}</span>
                     <span className="meta">
-                      {[d.name !== d.device_id && d.device_id, d.tenant, d.location, d.battery_voltage_v != null && `${d.battery_voltage_v.toFixed(2).replace('.', ',')} V`]
-                        .filter(Boolean)
-                        .join(' · ')}
+                      {d.last_message_error ? (
+                        <span className="warn">Letzte Nachricht ungültig</span>
+                      ) : (
+                        [d.name !== d.device_id && d.device_id, d.location, d.category,
+                          d.battery_voltage_v != null && `${d.battery_voltage_v.toFixed(2).replace('.', ',')} V`]
+                          .filter(Boolean)
+                          .join(' · ')
+                      )}
                     </span>
                   </span>
-                  <span className={`seen${d.stale ? ' stale' : ''}`}>{ago(d.minutes_since_last_seen)}</span>
+                  <span className={`seen${d.stale ? ' stale' : ''}`}>
+                    {ago(d.minutes_since_last_message ?? d.minutes_since_last_seen)}
+                  </span>
                 </Link>
               </li>
             ))}

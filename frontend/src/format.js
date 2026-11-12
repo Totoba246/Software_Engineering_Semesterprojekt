@@ -1,4 +1,10 @@
-// German number / date formatting helpers.
+/*
+ * HELPERS THAT TURN NUMBERS AND TIMES INTO GERMAN TEXT
+ *   11.276        -> "11,3"
+ *   35.2          -> "35 %"
+ *   12 (minutes)  -> "vor 12 Min."
+ *   a timestamp   -> "Do., 05.11.2026, 09:37"  (in the browser's time zone)
+ */
 
 const nf = (digits) =>
   new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })

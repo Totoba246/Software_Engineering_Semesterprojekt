@@ -1,0 +1,83 @@
+# =============================================================================
+#  DEPLOY STEP 1 of 3: build the Docker images on GitHub and upload them
+# =============================================================================
+#  (Sketch: "Git-Repo -> Runner -> executable -> Git/Container Registry")
+#
+#  WHEN: automatically after the "CI" workflow (tests, .github/workflows/ci.yml)
+#        finished SUCCESSFULLY for a push to main. So only tested code ships.
+#        Can also be started by hand: GitHub -> Actions -> Deploy -> "Run workflow".
+#
+#  WHAT: a free GitHub "runner" (a temporary Linux machine, 2000 free minutes/month)
+#        builds our two images, exactly like `docker compose build` does locally:
+#          ghcr.io/<owner>/batterywatch-backend   (collector + API, from backend/)
+#          ghcr.io/<owner>/batterywatch-frontend  (web page + nginx, from frontend/)
+#        and uploads them to the GitHub Container Registry (ghcr.io), each twice:
+#          :latest     -> what the server always runs
+#          :<commit>   -> a fixed version, to go back if something breaks
+#
+#  WHAT THEN: nothing here touches the server. The server checks for new
+#        images by itself every few minutes (step 3: deploy/batterywatch-update.timer)
+#        and pulls them (step 2: docker-compose.server.yml).
+#
+#  See the uploaded images: GitHub repo page -> right side "Packages".
+# =============================================================================
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]        # the name in ci.yml
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:         # "Run workflow" button
+
+permissions:
+  contents: read
+  packages: write            # allows uploading to ghcr.io with the built-in GITHUB_TOKEN
+
+jobs:
+  images:
+    # only if the tests passed (or it was started by hand)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code (exactly the commit that was tested)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Work out image names (ghcr.io needs lower case)
+        id: names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          sha="$(git rev-parse --short HEAD)"
+          echo "prefix=ghcr.io/${owner}/batterywatch" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # automatic, nothing to set up
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and upload backend image (collector + API)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ steps.names.outputs.prefix }}-backend:latest
+            ${{ steps.names.outputs.prefix }}-backend:${{ steps.names.outputs.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and upload frontend image (web page + nginx)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.names.outputs.prefix }}-frontend:latest
+            ${{ steps.names.outputs.prefix }}-frontend:${{ steps.names.outputs.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

@@ -1,105 +1,224 @@
-# BatteryWatch - complete stack (ADR-08)
+# =============================================================================
+#  BatteryWatch - the whole system in one file (Docker Compose, see ADR-08)
+# =============================================================================
 #
-#   cp .env.example .env
-#   docker compose up -d --build                      # DB, broker, collector, API, frontend
-#   docker compose --profile test up -d publisher     # + simulated TrafficNodes
+#  WHAT IS THIS FILE?
+#  Docker Compose starts several small "containers" (think: tiny separate
+#  computers, each running exactly one program) and connects them.
+#  This file lists every container, which program it runs, which settings it
+#  gets and which ports it opens.
 #
-# Frontend: http://localhost:20800   API docs: http://localhost:20801/docs
+#  THE CONTAINERS (= "services") AND HOW THEY TALK TO EACH OTHER
+#
+#    Node 101 (traffic light box, somewhere outside)
+#        │ MQTT message every 15 min, e.g. {"current_mA": 620, "voltage_mV": 12100, ...}
+#        ▼
+#    MQTT broker  ── either the course broker mqtt.ti-labs.ai:8883 (real nodes)
+#        │            or our own "mqtt" container below (for tests)
+#        ▼
+#    collector   (Python)  receives every message, checks it, writes it into ...
+#        ▼
+#    db          (PostgreSQL) ... the database. Stores devices + measurements.
+#        ▲
+#    api         (Python/FastAPI) reads the database, answers questions like
+#        ▲                         "give me all devices with their battery level"
+#    frontend    (nginx + React)   the web page. Your browser loads it and then
+#        ▲                         asks the api for data every 5 minutes.
+#    Your browser:  http://<server>:20800
+#
+#  PORTS - TWO NUMBERS, TWO WORLDS
+#  Every container has its own network. Inside it, programs use their usual
+#  port (PostgreSQL 5432, MQTT 1883, API 8000, web server 80).
+#  `ports: "HOST:CONTAINER"` connects a port of the SERVER (left) to a port
+#  inside the CONTAINER (right). Our group may only use server ports 20800-20899:
+#
+#    server port   ->  container   what                                reachable from
+#    20800         ->  frontend:80 the web page                        everywhere (internet)
+#    20801         ->  api:8000    the REST API (+ docs at /docs)      only the server itself
+#    20832         ->  db:5432     our PostgreSQL database             only the server (or DB_BIND)
+#    20883         ->  mqtt:1883   our own test MQTT broker            only the server itself
+#
+#  "only the server itself" = bound to 127.0.0.1. From your laptop you reach
+#  those through an SSH tunnel (see docs/Server.md).
+#
+#  Containers find each other BY NAME: the collector connects to "db:5432",
+#  nginx forwards to "api:8000". These names only work inside Docker.
+#
+#  WHERE DO THE SETTINGS COME FROM?
+#  Every ${NAME:-default} below is read from the file .env (next to this file).
+#  If .env doesn't define it, the value after ":-" is used.
+#  .env contains passwords and is NOT in Git (see .env.example for a template).
+#
+#  COMMANDS
+#    cp .env.example .env                              # once: create settings
+#    docker compose up -d --build                      # build + start everything
+#    docker compose --profile test up -d publisher     # + fake nodes for testing
+#    docker compose ps                                 # what is running?
+#    docker compose logs -f collector                  # watch a container's output
+#    docker compose down                               # stop (data is kept)
+#
+# =============================================================================
 
+
+# Settings that the three Python containers (collector, api, publisher) share.
+# "&backend-env" gives this block a name; "<<: *backend-env" pastes it below.
 x-backend-env: &backend-env
+  # How Python finds the database: user:password@HOST:PORT/database-name.
+  # HOST is "db" = the database container's name, PORT the INTERNAL port 5432.
   DATABASE_URL: postgresql://${POSTGRES_USER:-batterywatch}:${POSTGRES_PASSWORD:-batterywatch}@db:5432/${POSTGRES_DB:-batterywatch}
-  SHUNT_RESISTANCE_OHM: ${SHUNT_RESISTANCE_OHM:-0.002}
-  BATTERY_SOC_CURVE: ${BATTERY_SOC_CURVE:-10.5:0,12.7:100}
-  STATUS_CRITICAL_BELOW: ${STATUS_CRITICAL_BELOW:-20}
-  STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
-  SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
-  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-30}
+  # Battery rules (explained in docs/Statusregeln.md and backend/batterywatch/config.py)
+  SHUNT_RESISTANCE_OHM: ${SHUNT_RESISTANCE_OHM:-0.002}     # U_bat = 0.002 Ohm * I + U_measured
+  BATTERY_SOC_CURVE: ${BATTERY_SOC_CURVE:-10.5:0,12.7:100} # volts -> percent
+  STATUS_CRITICAL_BELOW: ${STATUS_CRITICAL_BELOW:-20}      # below 20 % = red
+  STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}                # below 50 % = yellow
+  SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}              # average voltage over 60 min
+  STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}          # no data for 45 min = "old"
+  POSITION_DAYS: ${POSITION_DAYS:-3}                       # map position = average GPS of 3 days
+  # Login (ADR-09, explained in backend/batterywatch/config.py)
+  SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS
+  LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}             # wrong passwords before a short block
+  LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-5}
 
 services:
+
+  # ---------------------------------------------------------------------------
+  # db: the PostgreSQL database - stores devices and all measurements.
+  # Uses a ready-made image from Docker Hub; we don't write any code for it.
+  # The tables are created by our Python code (backend/batterywatch/schema.sql).
+  # ---------------------------------------------------------------------------
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
+    image: postgres:16-alpine          # official PostgreSQL 16, small "alpine" variant
+    restart: unless-stopped            # restart automatically after crash/reboot
+    environment:                       # creates database + user on the very first start
       POSTGRES_DB: ${POSTGRES_DB:-batterywatch}
       POSTGRES_USER: ${POSTGRES_USER:-batterywatch}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-batterywatch}
     volumes:
+      # The data lives in a Docker "volume" (a folder managed by Docker), so it
+      # survives restarts and rebuilds. Only `docker compose down -v` deletes it!
       - db-data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${DB_PORT:-20832}:5432"   # only local / via SSH tunnel
+      # server port DB_PORT (20832)  ->  port 5432 inside the container
+      # DB_BIND=127.0.0.1: only on the server itself / via SSH tunnel (default)
+      # DB_BIND=0.0.0.0:   reachable from the internet on DB_PORT (password protected)
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-20832}:5432"
     healthcheck:
+      # Docker asks "are you ready?" every 5 s. Other containers wait for "healthy".
+      # ($$ = a literal $ - the variable is resolved inside the container)
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
 
+  # ---------------------------------------------------------------------------
+  # mqtt: OUR OWN small MQTT broker (Mosquitto), only for tests.
+  # The real nodes publish to the course broker mqtt.ti-labs.ai instead.
+  # The test publisher (below) sends fake node messages here.
+  # Config file: mosquitto/mosquitto.conf
+  # ---------------------------------------------------------------------------
   mqtt:
     image: eclipse-mosquitto:2.0.18
     restart: unless-stopped
     volumes:
+      # our config file (read-only)  ->  where Mosquitto expects it in the container
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mqtt-data:/mosquitto/data
     ports:
-      - "127.0.0.1:${MQTT_PORT:-20883}:1883"  # anonymous access -> never expose publicly
+      # server port 20883 -> MQTT port 1883 in the container.
+      # No password on this broker -> only reachable from the server itself.
+      - "127.0.0.1:${MQTT_PORT:-20883}:1883"
 
+  # ---------------------------------------------------------------------------
+  # collector: OUR Python program that listens to the MQTT broker and saves
+  # every message into the database.  Code: backend/batterywatch/collector/
+  # It opens no port: it only connects OUT (to the broker and to db).
+  # ---------------------------------------------------------------------------
   collector:
-    build: ./backend
-    command: ["python", "-m", "batterywatch.collector"]
+    build: ./backend                   # build the image from backend/Dockerfile
+    command: ["python", "-m", "batterywatch.collector"]   # which program to run
     restart: unless-stopped
     environment:
-      <<: *backend-env
+      <<: *backend-env                 # the shared settings from the top
+      # Which broker to listen to. Default "mqtt" = our test container above.
+      # On the server, .env points this to mqtt.ti-labs.ai:8883 with TLS + password.
       MQTT_HOST: ${COLLECTOR_MQTT_HOST:-mqtt}
       MQTT_PORT: ${COLLECTOR_MQTT_PORT:-1883}
-      MQTT_TLS: ${COLLECTOR_MQTT_TLS:-false}
+      MQTT_TLS: ${COLLECTOR_MQTT_TLS:-false}           # encrypted connection? (true for 8883)
       MQTT_USERNAME: ${COLLECTOR_MQTT_USERNAME:-}
       MQTT_PASSWORD: ${COLLECTOR_MQTT_PASSWORD:-}
-      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-device/+/+/+/status}
+      # Which "addresses" (topics) to listen to; + = any value in that place.
+      # Node 101 publishes to traffic-nodes/101/measurements.
+      MQTT_TOPIC: ${COLLECTOR_MQTT_TOPIC:-traffic-nodes/+/measurements,traffic-device/+/+/+/status}
+      # Our name at the broker (must be unique there - other groups use the same broker)
       MQTT_CLIENT_ID: ${COLLECTOR_MQTT_CLIENT_ID:-batterywatch-llv-collector}
-    depends_on:
+    depends_on:                        # start order: wait for the database first
       db:
         condition: service_healthy
       mqtt:
         condition: service_started
 
+  # ---------------------------------------------------------------------------
+  # api: OUR Python web service (FastAPI) that the web page asks for data.
+  # Code: backend/batterywatch/api/   Try it: http://<server>:20801/docs
+  # (same image as the collector, just started with a different program:
+  #  backend/Dockerfile's default command runs the API)
+  # ---------------------------------------------------------------------------
   api:
     build: ./backend
     restart: unless-stopped
     environment:
       <<: *backend-env
     ports:
+      # server port 20801 -> API port 8000. Only the server itself; the browser
+      # reaches the API through the frontend (nginx forwards /api/... to api:8000).
       - "127.0.0.1:${API_PORT:-20801}:8000"
     depends_on:
       db:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # frontend: the web page. Built from frontend/ (React), served by nginx.
+  # nginx also forwards every request to /api/... to the api container
+  # (see frontend/nginx.conf), so the browser only needs this ONE port.
+  # ---------------------------------------------------------------------------
   frontend:
-    build: ./frontend
+    build: ./frontend                  # build from frontend/Dockerfile
     restart: unless-stopped
     ports:
+      # server port 20800 -> web server port 80. NOT limited to 127.0.0.1,
+      # so this is the one port reachable from the internet: http://<server>:20800
       - "${WEB_PORT:-20800}:80"
     depends_on:
       - api
 
-  # Test publisher (A05): simulated TrafficNodes -> local broker.
-  # Writes 30 days of history directly into the DB, then sends live messages via MQTT.
+  # ---------------------------------------------------------------------------
+  # publisher: FAKE nodes for testing (only starts with `--profile test`).
+  # 1. writes 30 days of made-up history straight into the database,
+  # 2. then sends a fake message per node every 30 s to OUR broker ("mqtt"),
+  #    which the collector picks up -> tests the whole chain.
+  # Never point this at the shared course broker.
+  # Code: backend/batterywatch/tools/test_publisher.py
   # Also used to run the import tool, see docs/Entwicklung.md.
+  # ---------------------------------------------------------------------------
   publisher:
-    profiles: ["test"]
+    profiles: ["test"]                 # not started by a plain `docker compose up`
     build: ./backend
     command:
       - python
       - -m
       - batterywatch.tools.test_publisher
       - simulate
-      - --devices=8
-      - --backfill-hours=720
-      - --backfill-direct
-      - --interval=30
+      - --devices=8                    # 8 fake nodes SIM-001 ... SIM-008
+      - --backfill-hours=720           # 720 h = 30 days of history
+      - --backfill-direct              # history straight into the DB (fast)
+      - --interval=30                  # then a live message every 30 s
     environment:
       <<: *backend-env
-      MQTT_HOST: mqtt
+      MQTT_HOST: mqtt                  # always OUR test broker
       MQTT_PORT: "1883"
     volumes:
+      # makes the recorded sample data available inside the container as /samples
       - ./docs/samples:/samples:ro
     depends_on:
       db:
@@ -107,6 +226,27 @@ services:
       mqtt:
         condition: service_started
 
+  # ---------------------------------------------------------------------------
+  # tools: runs one-off commands, e.g. reading the course history database
+  # (`python start.py check-history` / `import-history`). Never runs on its own.
+  # start.py prefers running those commands with your own Python; this
+  # container is the fallback. Inside it, "host.docker.internal" = YOUR computer
+  # (provided by Docker Desktop itself - don't override it with extra_hosts:
+  # on Docker Desktop that turned into an unreachable IPv6 address).
+  # ---------------------------------------------------------------------------
+  tools:
+    profiles: ["tools"]
+    build: ./backend
+    command: ["python", "-m", "batterywatch.tools.import_data", "--help"]
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./docs/samples:/samples:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+# Named storage areas managed by Docker (see "volumes:" above).
 volumes:
-  db-data:
-  mqtt-data:
+  db-data:      # all database contents
+  mqtt-data:    # the test broker's memory

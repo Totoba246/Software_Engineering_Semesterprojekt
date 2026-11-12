@@ -94,7 +94,15 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 - **Konsequenzen:**
   - ➕ Keine zusätzliche Infrastruktur, volle Kontrolle über das Rollenmodell
   - ➖ Sicherheitsverantwortung liegt beim Team → Auth gezielt testen (falsches Passwort, fremde Geräte, fehlende Rechte)
-  - ⚠️ Session-Cookie vs. Token (JWT) wird bei der Umsetzung von F06 festgelegt
+  - ✅ Umsetzung (F06): **serverseitige Sessions mit HttpOnly-Cookie** statt JWT. Grund: Sperren eines
+    Nutzers, Passwort-Reset und Logout wirken sofort (Session-Zeile wird gelöscht), JavaScript kommt
+    nicht an das Token (Schutz bei XSS), `SameSite=Lax` gegen CSRF. Passwörter mit **Argon2**
+    (argon2-cffi), in der Datenbank nur der SHA-256-Hash des Session-Tokens. Brute-Force-Schutz:
+    nach 5 Fehlversuchen je Benutzername 5 Minuten Sperre. Neue Konten bekommen ein Start-Passwort,
+    das beim ersten Login geändert werden muss (es gibt keinen E-Mail-Versand).
+  - Rechte je Rolle (Use-Case-Diagramm): Admin = nur Nutzerverwaltung; Firmenchef/Mitarbeiter = alle
+    Geräte, Stammdaten, Techniker zuordnen; Servicetechniker = nur zugeordnete Geräte (Server filtert).
+    Getestet in `backend/tests/test_auth.py`.
 
 ## ADR-10 · Collection-Service für die Datenaufnahme
 

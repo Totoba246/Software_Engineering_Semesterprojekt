@@ -1,0 +1,32 @@
+# =============================================================================
+#  DEPLOY STEP 3 of 3 (part a): WHAT the server does to update itself
+# =============================================================================
+#  (Sketch: "Server -> systemd -> docker compose pull / up")
+#
+#  systemd is the program on Linux that starts and supervises other programs.
+#  This "service" runs once and then ends (Type=oneshot). It is started every
+#  5 minutes by batterywatch-update.timer (part b).
+#
+#  Steps:
+#   1. git pull               -> newest docker-compose.server.yml and scripts
+#   2. docker compose pull    -> newest images from ghcr.io (built by GitHub, step 1)
+#   3. docker compose up -d   -> restarts ONLY containers whose image changed;
+#                                if nothing is new, nothing happens
+#
+#  Installed by deploy/setup-server.sh as a "user service" (no root needed) into
+#  ~/.config/systemd/user/. Assumes the project is in ~/batterywatch.
+#  Useful commands on the server:
+#    systemctl --user start batterywatch-update.service    update right now
+#    journalctl --user -u batterywatch-update.service      what happened (log)
+# =============================================================================
+[Unit]
+Description=BatteryWatch: pull new images from ghcr.io and restart changed containers
+
+[Service]
+Type=oneshot
+# %h = the user's home folder
+WorkingDirectory=%h/batterywatch
+# "-" in front: a failed git pull (e.g. no network) must not stop the image update
+ExecStart=-/usr/bin/git pull --ff-only --quiet
+ExecStart=/usr/bin/env docker compose pull --quiet
+ExecStart=/usr/bin/env docker compose up -d --remove-orphans
