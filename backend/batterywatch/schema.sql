@@ -67,3 +67,41 @@ CREATE INDEX IF NOT EXISTS raw_messages_device_time_idx ON raw_messages (device_
 -- v2: live broker layout without tenant, temperature from the node
 ALTER TABLE devices ALTER COLUMN tenant DROP NOT NULL;
 ALTER TABLE measurements ADD COLUMN IF NOT EXISTS temperature_c DOUBLE PRECISION;  -- degrees Celsius
+
+-- =============================================================================
+-- v3: login, roles and device master data (F06, F07, F09)
+-- =============================================================================
+
+-- People who can log in. Roles (see README 1.c and the use-case diagram):
+--   admin       user accounts + system settings, no device views
+--   chef        Firmenchef: all devices, master data, assign technicians
+--   mitarbeiter same rights as chef
+--   techniker   Servicetechniker: only the devices assigned to them
+CREATE TABLE IF NOT EXISTS users (
+    id                    SERIAL PRIMARY KEY,
+    username              TEXT NOT NULL UNIQUE,      -- login name, stored lower case
+    display_name          TEXT NOT NULL,
+    email                 TEXT,
+    role                  TEXT NOT NULL CHECK (role IN ('admin', 'chef', 'mitarbeiter', 'techniker')),
+    password_hash         TEXT NOT NULL,             -- Argon2 hash, never the password itself
+    must_change_password  BOOLEAN NOT NULL DEFAULT true,  -- start password set by an admin
+    active                BOOLEAN NOT NULL DEFAULT true,  -- false = locked, cannot log in
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_login_at         TIMESTAMPTZ
+);
+
+-- One row per logged-in browser. The browser only holds a random token in an
+-- HttpOnly cookie; we store its SHA-256 hash, so a database leak reveals no tokens.
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
+
+-- Device master data: the assigned technician (one per device, F09) and a
+-- manual position for nodes without GPS (node 101 sends lat/lon = null).
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS technician_id INTEGER REFERENCES users (id) ON DELETE SET NULL;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS manual_latitude DOUBLE PRECISION;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS manual_longitude DOUBLE PRECISION;

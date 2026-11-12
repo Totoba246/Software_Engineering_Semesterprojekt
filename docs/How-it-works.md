@@ -160,12 +160,29 @@ If something's wrong (node 101 currently sends `voltage_mV: 5368709120`, which i
 
 1. Browser → `http://212.227.31.76:20800` → the **frontend** container (nginx).
 2. nginx sends `index.html` plus the JavaScript and CSS files (built from `frontend/src/`).
-3. The JavaScript starts (`main.jsx` → `App.jsx`) and asks `GET /api/devices`.
+3. The JavaScript starts (`main.jsx` → `App.jsx`) and asks `GET /api/auth/me`: "who am I?".
+   Not logged in → login page. After the login the browser keeps a **cookie**
+   (`bw_session`) and sends it with every request; the api knows who is asking.
+   Then it asks `GET /api/devices`.
 4. nginx sees `/api/` and passes it to `api:8000` (`frontend/nginx.conf`).
 5. The api answers with JSON, the page draws the list and the map.
 6. Every 5 minutes, steps 3–5 repeat by themselves (`usePolling.js`).
 7. Clicking a device → address `/geraete/101` → `DeviceDetail.jsx` asks for
    `/api/devices/101`, `/history` and `/messages`.
+
+---
+
+### Who sees what (login and roles)
+
+| Role | Sees | May change |
+|---|---|---|
+| Admin | only the user management | accounts (create, role, lock, password, delete) |
+| Firmenchef, Mitarbeiter | all devices | devices (add, edit, delete), assign technicians |
+| Servicetechniker | only devices assigned to them | nothing |
+
+The **server** checks this for every request (`backend/batterywatch/api/deps.py`), not only the web
+page: a technician asking for someone else's device gets "403 Kein Zugriff", even with hand-made
+requests. Passwords are stored only as Argon2 hashes (`security.py`).
 
 ---
 
@@ -215,6 +232,7 @@ Every code file starts with a comment explaining what it does and who uses it.
 | MQTT (course broker) | `.env` on the server (`COLLECTOR_MQTT_PASSWORD`) | collector |
 | Our database | `.env` on the server (`POSTGRES_PASSWORD`, random) | collector, api, you (DBeaver) |
 | Course history DB | nowhere – typed into `import-history.sh` | import, once |
+| Website accounts | database table `users`, only as Argon2 **hash** (not readable) | everyone who logs in |
 
 `.env` and `tinf25d-llv.yaml` are in `.gitignore` and are **never** uploaded to GitHub.
 Show our database password on the server: `grep POSTGRES_PASSWORD .env`

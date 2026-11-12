@@ -153,11 +153,22 @@ Die GitHub-Action `.github/workflows/ci.yml` führt alle Tests (inkl. MQTT) und 
 
 ## REST-API
 
-| Endpunkt | Inhalt |
+Alle Endpunkte außer `health` und `auth/login` brauchen eine Anmeldung (Cookie `bw_session`).
+Spalte „Wer“: A = Admin, B = Firmenchef/Mitarbeiter, T = Servicetechniker (nur zugeordnete Geräte).
+
+| Endpunkt | Wer | Inhalt |
+|---|---|---|
+| `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | alle | anmelden, abmelden, „wer bin ich“ |
+| `POST /api/auth/password` | alle | eigenes Passwort ändern (Pflicht nach Start-Passwort) |
+| `GET/POST /api/users`, `PATCH/DELETE /api/users/{id}` | A | Nutzerverwaltung (Start-Passwort, Sperren, Rolle, Reset) |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/{id}` | B | Gerät anlegen, Stammdaten/Techniker ändern, löschen |
+| `GET /api/technicians` | B | Servicetechniker für die Zuordnung |
+
+| Endpunkt (lesen, B + T) | Inhalt |
 |---|---|
-| `GET /api/health` | Lebenszeichen inkl. DB |
+| `GET /api/health` | Lebenszeichen inkl. DB (ohne Anmeldung) |
 | `GET /api/devices` | alle Geräte mit aktuellem Zustand (geglättete Spannung, SoC, Status, Position, letzte Meldung) |
-| `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h, Spannungstrend V/Tag |
+| `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h, Spannungstrend V/Tag, Schätzung „voraussichtlich kritisch/leer“ |
 | `GET /api/devices/{id}/messages?limit=20` | letzte empfangene MQTT-Nachrichten inkl. verworfener (mit Grund) |
 | `GET /api/devices/{id}/history?hours=168` | Verlauf, zu Zeitintervallen zusammengefasst (Mittel/Min/Max); Zeitraum endet bei der letzten Meldung |
 | `GET /api/status-rules` | aktuell gültige Schwellwerte und Kennlinie |
@@ -168,7 +179,9 @@ Das Frontend fragt die Daten alle 5 Minuten neu ab (ADR-06).
 
 | Tabelle | Inhalt |
 |---|---|
-| `devices` | ein Eintrag je Gerät (wird beim ersten Messwert angelegt); `name`, `category`, `location` für Stammdaten (F07) |
+| `devices` | ein Eintrag je Gerät (beim ersten Messwert automatisch oder von Hand angelegt); Stammdaten `name`, `category`, `location`, `technician_id`, manuelle Position (F07, F09) |
+| `users` | Konten mit Rolle (`admin`, `chef`, `mitarbeiter`, `techniker`), Argon2-Passwort-Hash, gesperrt ja/nein |
+| `sessions` | angemeldete Browser (nur SHA-256-Hash des Cookie-Tokens), mit Ablaufzeit |
 | `measurements` | ein Eintrag je gültiger Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, `temperature_c`, GPS, `source` (`mqtt`/`import`) |
 | `raw_messages` | jede empfangene MQTT-Nachricht im Original, `accepted` + `error` (Grund der Ablehnung) |
 

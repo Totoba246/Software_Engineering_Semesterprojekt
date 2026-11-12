@@ -30,6 +30,11 @@ x-backend-env: &backend-env
   STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}
   SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}
   STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}
+  # Login (ADR-09, explained in backend/batterywatch/config.py)
+  SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS
+  LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}             # wrong passwords before a short block
+  LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-5}
 
 # Where the images come from. IMAGE_TAG=latest = always the newest;
 # set e.g. IMAGE_TAG=1a2b3c4 in .env to stay on (or go back to) one version.

@@ -7,12 +7,18 @@
  *   GET /api/devices/<id>/messages    -> list of the last MQTT messages (MessagesCard)
  * If the newest message was rejected (e.g. voltage_mV = 5368709120), a red
  * box at the top explains why.
+ *
+ * Firmenchef/Mitarbeiter also see the assigned technician and can edit the
+ * master data, assign a technician or delete the device (MasterDataCard).
+ * A Servicetechniker opening a device that isn't theirs gets "Kein Zugriff"
+ * (the server answers 403).
  */
 
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { api } from '../api.js'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { api, isManagement } from '../api.js'
 import { BatteryIcon } from '../components/Battery.jsx'
+import DeviceForm from '../components/DeviceForm.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
 import HistoryChart, { METRICS, NIGHT_FROM, NIGHT_TO } from '../components/HistoryChart.jsx'
 import { ago, dateTime, num, STATUS_LABEL } from '../format.js'
@@ -116,10 +122,71 @@ function HistoryCard({ device, rules }) {
   )
 }
 
-export default function DeviceDetail({ rules }) {
-  const { id } = useParams()
-  const { data: d, error, loading } = usePolling(() => api.device(id), [id])
+/* --- master data (F07) + technician (F09) ----------------------------------------------- */
+function MasterDataCard({ device: d, me, onSaved, onDeleted }) {
+  const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState('')
+  const manager = isManagement(me)
 
+  if (editing) {
+    return (
+      <section className="card span2" aria-label="Stammdaten bearbeiten">
+        <h2>Stammdaten bearbeiten</h2>
+        <DeviceForm device={d} onCancel={() => setEditing(false)}
+          onSubmit={async (data) => { await api.updateDevice(d.device_id, data); setEditing(false); onSaved() }} />
+      </section>
+    )
+  }
+  return (
+    <section className="card span2" aria-label="Stammdaten">
+      <div className="card-head">
+        <h2>Stammdaten</h2>
+        {manager && (
+          <div className="card-tools">
+            <button type="button" className="btn-s" onClick={() => setEditing(true)}>Bearbeiten</button>
+            {confirmDelete ? (
+              <>
+                <span className="q">Gerät mit allen Messwerten löschen?</span>
+                <button type="button" className="btn-s danger-solid" onClick={async () => {
+                  try { await api.deleteDevice(d.device_id); onDeleted() } catch (err) { setError(err.message) }
+                }}>Endgültig löschen</button>
+                <button type="button" className="btn-s" onClick={() => setConfirmDelete(false)}>Abbrechen</button>
+              </>
+            ) : (
+              <button type="button" className="btn-s danger" onClick={() => setConfirmDelete(true)}>Löschen</button>
+            )}
+          </div>
+        )}
+      </div>
+      {error && <p className="hint warn">{error}</p>}
+      <dl className="facts cols">
+        <dt>Geräte-ID</dt><dd>{d.device_id}</dd>
+        <dt>Name</dt><dd>{d.name !== d.device_id ? d.name : '–'}</dd>
+        <dt>Kategorie</dt><dd>{d.category ?? '–'}</dd>
+        <dt>Ort</dt><dd>{d.location ?? '–'}</dd>
+        {manager && <><dt>Servicetechniker</dt><dd>{d.technician?.display_name ?? <span className="muted">nicht zugeordnet</span>}</dd></>}
+        {d.tenant && <><dt>Betreiber</dt><dd>{d.tenant}</dd></>}
+      </dl>
+    </section>
+  )
+}
+
+function NoAccess({ text }) {
+  return (
+    <div className="scroll"><div className="detail">
+      <Link className="back" to="/">← Zur Übersicht</Link>
+      <div className="d-head"><h1>Kein Zugriff</h1><p>{text}</p></div>
+    </div></div>
+  )
+}
+
+export default function DeviceDetail({ rules, me, onChanged }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { data: d, error, loading, refresh } = usePolling(() => api.device(id), [id])
+
+  if (error?.status === 403) return <NoAccess text={error.message} />
   if (error?.status === 404) {
     return (
       <div className="scroll"><div className="detail">
@@ -143,7 +210,7 @@ export default function DeviceDetail({ rules }) {
         <Link className="back" to="/">← Zur Übersicht</Link>
         <div className="d-head">
           <h1>{d.name}</h1>
-          <p>{[d.name !== d.device_id && d.device_id, d.tenant, d.device_type, d.location, d.category].filter(Boolean).join(' · ')}</p>
+          <p>{[d.name !== d.device_id && d.device_id, d.category, d.location].filter(Boolean).join(' · ') || d.device_type}</p>
         </div>
         {error && <p className="hint warn">Aktualisierung fehlgeschlagen: {error.message}</p>}
         {d.last_message_error && (
@@ -178,7 +245,9 @@ export default function DeviceDetail({ rules }) {
               </dd>
               <dt>Letzte Nachricht</dt>
               <dd className={d.last_message_error ? 'stale' : ''}>
-                {d.last_message_at ? `${ago(d.minutes_since_last_message)}${d.last_message_error ? ' (verworfen)' : ''}` : '– (nur importierte Daten)'}
+                {d.last_message_at
+                  ? `${ago(d.minutes_since_last_message)}${d.last_message_error ? ' (verworfen)' : ''}`
+                  : d.last_seen ? '– (nur importierte Daten)' : 'noch keine'}
               </dd>
               <dt>Temperatur</dt>
               <dd>{d.temperature_c != null ? `${num(d.temperature_c, 1)} °C` : '–'}</dd>
@@ -188,9 +257,16 @@ export default function DeviceDetail({ rules }) {
               <dd>{d.avg_current_a_24h != null ? `${num(d.avg_current_a_24h, 3)} A` : '–'}</dd>
               <dt>Spannungstrend</dt>
               <dd>{d.voltage_trend_v_per_day != null ? `${num(d.voltage_trend_v_per_day, 3)} V pro Tag (72 Std.)` : '–'}</dd>
+              <dt>Voraussichtlich kritisch</dt>
+              <dd className={d.estimated_critical_at ? 'warnish' : ''}>
+                {d.estimated_critical_at ? <>{dateTime(d.estimated_critical_at)}<br /><small>Schätzung aus dem Trend</small></> : '–'}
+              </dd>
+              <dt>Voraussichtlich leer</dt>
+              <dd>{d.estimated_empty_at ? dateTime(d.estimated_empty_at) : '–'}</dd>
               <dt>Position</dt>
               <dd>
                 {d.position ? `${num(d.position.latitude, 5)}, ${num(d.position.longitude, 5)}` : 'kein GPS'}
+                {d.position?.source === 'manuell' && ' (manuell eingetragen)'}
                 {d.position?.altitude_m != null && ` · ${num(d.position.altitude_m, 0)} m`}
                 {d.position?.satellites != null && ` · ${d.position.satellites} Sat.`}
               </dd>
@@ -198,6 +274,10 @@ export default function DeviceDetail({ rules }) {
               <dd>{d.measurement_count ? `${d.measurement_count.toLocaleString('de-DE')} seit ${dateTime(d.first_seen)}` : 'keine'}</dd>
             </dl>
           </section>
+
+          <MasterDataCard device={d} me={me}
+            onSaved={() => { refresh(); onChanged?.() }}
+            onDeleted={() => { onChanged?.(); navigate('/') }} />
 
           <HistoryCard device={d} rules={rules} />
 
@@ -208,7 +288,10 @@ export default function DeviceDetail({ rules }) {
             {d.position ? (
               <div className="mini"><DeviceMap devices={[d]} selectedId={d.device_id} /></div>
             ) : (
-              <p className="hint">Für dieses Gerät liegt noch keine GPS-Position vor.</p>
+              <p className="hint">
+                Für dieses Gerät liegt keine Position vor (kein GPS).
+                {isManagement(me) && ' Unter „Stammdaten → Bearbeiten“ lässt sich eine Position von Hand eintragen.'}
+              </p>
             )}
           </section>
         </div>

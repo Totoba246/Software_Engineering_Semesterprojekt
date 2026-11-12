@@ -114,6 +114,24 @@ fi
 say "Starte die Container"
 docker compose up -d --remove-orphans
 
+say "Prüfe die Login-Konten"
+users=$(docker compose exec -T api python -m batterywatch.tools.manage count-users 2>/dev/null | tr -d '\r' || echo "?")
+if [ "$users" = "0" ]; then
+  echo "Es gibt noch kein Konto. Lege den ersten ADMIN an (er legt danach alle weiteren Konten auf der Webseite an)."
+  read -rp "Benutzername für den Admin [admin]: " admin_user
+  while true; do
+    read -rsp "Passwort (mind. 8 Zeichen): " BW_PASSWORD; echo
+    read -rsp "Nochmal zur Kontrolle: " pw2; echo
+    if [ "${#BW_PASSWORD}" -ge 8 ] && [ "$BW_PASSWORD" = "$pw2" ]; then break; fi
+    echo "Zu kurz oder nicht gleich - bitte nochmal."
+  done
+  # handed over as environment variable, not as argument (not visible in the process list)
+  export BW_PASSWORD
+  docker compose exec -T -e BW_PASSWORD api python -m batterywatch.tools.manage \
+    create-user "${admin_user:-admin}" --role admin --name Administrator || die "Admin konnte nicht angelegt werden."
+  unset BW_PASSWORD pw2
+fi
+
 say "Richte das automatische Update ein (systemd-Timer, alle 5 Minuten)"
 unit_dir="$HOME/.config/systemd/user"
 mkdir -p "$unit_dir"

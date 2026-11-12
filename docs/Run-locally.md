@@ -32,8 +32,30 @@ Echte Daten empfangen? (J/n):
 - **n** → 8 **fake nodes** (SIM-001 … SIM-008) with 30 days of made-up history.
   Works without any password; good for trying things out.
 
+Then it asks for the name and password of the **first admin** (the person who
+manages accounts). In test mode it also offers **demo accounts**.
+
 The first start takes a few minutes (downloads + builds). Then your browser opens
 **http://localhost:20800** – that's BatteryWatch.
+
+## Login and roles
+
+| Role | Sees / may | Demo account (test mode) |
+|---|---|---|
+| **Admin** | only the user management: create accounts, change roles, lock, reset passwords, delete | your own admin from the first start |
+| **Firmenchef** / **Mitarbeiter** | all devices; add, edit, delete devices; assign service technicians | `chef` / `mitarbeiter` |
+| **Servicetechniker** | only the devices assigned to them | `techniker1`, `techniker2` |
+
+Demo password: `demo1234` (only for trying out locally – never on the server).
+
+- **New account:** Admin → *Nutzer anlegen*. The page shows a **start password** once; pass it on.
+  At the first login the person must choose their own password.
+- **Forgot password:** the admin clicks *Passwort zurücksetzen* – or, if the admin itself forgot it:
+  `python start.py reset-password admin`
+- **Add a node:** as Firmenchef/Mitarbeiter → *+ Gerät hinzufügen*. The device ID must be the one in
+  the node's MQTT topic (`traffic-nodes/101/measurements` → `101`). Nodes that just start sending are
+  added automatically anyway; you can then give them a name, place, category and technician on their
+  detail page (*Stammdaten → Bearbeiten*). Nodes without GPS (like node 101) can get a position by hand.
 
 ## Everyday commands
 
@@ -45,6 +67,8 @@ The first start takes a few minutes (downloads + builds). Then your browser open
 | `python start.py logs` | watch incoming messages live (Ctrl+C to stop watching) |
 | `python start.py mode real` | switch to the real node 101 (asks for the MQTT password) |
 | `python start.py mode test` | switch to the 8 fake nodes |
+| `python start.py demo` | demo accounts + names/places/technicians for the fake nodes |
+| `python start.py reset-password NAME` | set a new password for an account |
 | `python start.py reset` | ⚠️ delete ALL local data and start from zero |
 | `python start.py help` | list of commands |
 

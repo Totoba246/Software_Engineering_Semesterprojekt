@@ -50,7 +50,15 @@ cd batterywatch
 
 Das Skript fragt nach dem **MQTT-Passwort** (Enter übernimmt die Vorgaben in `[...]`), erzeugt ein
 eigenes Passwort für unsere Datenbank, schreibt alles in `.env`, lädt die Images, startet die
-Container und richtet den systemd-Timer für die automatischen Updates ein.
+Container, legt den **ersten Admin** für die Webseite an (fragt nach Name und Passwort) und richtet
+den systemd-Timer für die automatischen Updates ein. Alle weiteren Konten legt der Admin auf der
+Webseite an (Nutzerverwaltung). **Keine Demo-Konten auf dem Server** – deren Passwort steht im Code.
+
+Passwort eines Kontos auf dem Server zurücksetzen (z. B. Admin vergessen):
+
+```bash
+docker compose exec api python -m batterywatch.tools.manage reset-password admin
+```
 
 Prüfen, ob der Timer läuft:
 

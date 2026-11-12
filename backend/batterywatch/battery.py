@@ -82,3 +82,32 @@ def classify(soc_percent: float | None, critical_below: float = 20, low_below: f
     if soc_percent < low_below:
         return BatteryStatus.LOW
     return BatteryStatus.OK
+
+
+def voltage_for_soc(soc_percent: float, curve: Sequence[tuple[float, float]]) -> float:
+    """Inverse of ``state_of_charge``: the battery voltage (V) at a given charge level.
+
+    Used for the prediction, e.g. "at which voltage is the battery critical (20 %)?"
+    """
+    if soc_percent <= curve[0][1]:
+        return float(curve[0][0])
+    if soc_percent >= curve[-1][1]:
+        return float(curve[-1][0])
+    for (v0, p0), (v1, p1) in zip(curve, curve[1:]):
+        if p0 <= soc_percent <= p1:
+            return v0 + (soc_percent - p0) * (v1 - v0) / (p1 - p0)
+    raise AssertionError("unreachable: curve must be sorted")
+
+
+def hours_until(voltage_now_v: float, target_v: float, trend_v_per_day: float | None) -> float | None:
+    """Simple linear estimate: in how many hours does the voltage reach ``target_v``?
+
+    None if the voltage isn't falling (no estimate possible) or the target is
+    already reached. Deliberately simple (F04 "Wechselprognose", first version):
+    a straight line through the trend of the last 72 hours.
+    """
+    if trend_v_per_day is None or trend_v_per_day >= -0.005:  # flat or rising
+        return None
+    if voltage_now_v <= target_v:
+        return 0.0
+    return (voltage_now_v - target_v) / -trend_v_per_day * 24

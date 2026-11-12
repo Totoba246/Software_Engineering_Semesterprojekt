@@ -1,4 +1,4 @@
-"""The SQL questions the API asks the database (read-only).
+"""The SQL questions the API asks the database.
 
 Kept in one file so you can read and test them separately, e.g. by pasting
 them into psql / DBeaver (replace %(name)s with a value first).
@@ -17,8 +17,12 @@ Quick SQL glossary for these queries:
 #           night (the traffic light dims at night), so a single value is too noisy.
 #  - pos:   newest measurement that has a GPS fix
 #  - msg:   newest received MQTT message, valid or not (shows rejected values)
+#  - tech:  the assigned service technician (master data)
+# {where} is filled in by the API, e.g. "only devices of technician 7".
 DEVICE_STATE = """
 SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
+       d.technician_id, tech.display_name AS technician_name,
+       d.manual_latitude, d.manual_longitude,
        last.measured_at              AS last_seen,
        last.current_ma               AS last_current_ma,
        last.battery_voltage_mv       AS last_battery_voltage_mv,
@@ -30,6 +34,7 @@ SELECT d.device_id, d.tenant, d.device_type, d.name, d.category, d.location,
        win.avg_current_ma,
        pos.latitude, pos.longitude, pos.altitude_m, pos.satellites
 FROM devices d
+LEFT JOIN users tech ON tech.id = d.technician_id
 LEFT JOIN LATERAL (
     SELECT measured_at, current_ma, battery_voltage_mv, temperature_c
     FROM measurements m
@@ -102,4 +107,23 @@ FROM raw_messages
 WHERE device_id = %(device_id)s
 ORDER BY received_at DESC
 LIMIT %(limit)s
+"""
+
+# --- Login -------------------------------------------------------------------
+# The logged-in user behind a session token (only if not expired and not locked).
+SESSION_USER = """
+SELECT u.id, u.username, u.display_name, u.email, u.role, u.must_change_password
+FROM sessions s
+JOIN users u ON u.id = s.user_id
+WHERE s.token_hash = %(token_hash)s AND s.expires_at > now() AND u.active
+"""
+
+# --- User management -----------------------------------------------------------
+USERS = """
+SELECT u.id, u.username, u.display_name, u.email, u.role, u.active, u.must_change_password,
+       u.created_at, u.last_login_at,
+       (SELECT count(*) FROM devices d WHERE d.technician_id = u.id) AS device_count
+FROM users u
+{where}
+ORDER BY u.display_name
 """

@@ -109,6 +109,17 @@ class Settings:
     # messages) marks a device as stale (shown in red as "outdated").
     stale_after_minutes: int = field(default_factory=lambda: int(_env("STALE_AFTER_MINUTES", "45")))
 
+    # --- Login (ADR-09) --------------------------------------------------------
+    # How long a login stays valid before you have to log in again.
+    session_hours: int = field(default_factory=lambda: int(_env("SESSION_HOURS", "168")))  # 7 days
+    # Send the login cookie only over HTTPS. Keep false while the site runs on
+    # plain http (localhost, http://212.227.31.76:20800); set true behind HTTPS.
+    cookie_secure: bool = field(default_factory=lambda: _env_bool("COOKIE_SECURE", False))
+    # Brute-force protection: this many wrong passwords for one username ->
+    # that username is blocked for LOGIN_LOCK_MINUTES.
+    login_max_failures: int = field(default_factory=lambda: int(_env("LOGIN_MAX_FAILURES", "5")))
+    login_lock_minutes: int = field(default_factory=lambda: int(_env("LOGIN_LOCK_MINUTES", "5")))
+
     # --- API ----------------------------------------------------------------
     # Which other web addresses may call the API from a browser ("*" = all).
     # Only matters during development, when the page runs on a different port.

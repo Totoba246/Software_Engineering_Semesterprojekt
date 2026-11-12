@@ -18,7 +18,15 @@ USE (in a terminal, in the project folder, e.g. the VS Code terminal)
     python start.py check-history    plausibility report of the course history database
     python start.py import-history   copy the course history into your local database
                                      (optional: --to 2026-03-29T00:16:57+00:00)
+    python start.py demo             demo accounts + device master data for the fake nodes
+    python start.py reset-password NAME   new password for an account (e.g. if forgotten)
     python start.py reset            DELETE all local data and start fresh
+
+LOGIN
+    The very first start asks for the name + password of the first ADMIN.
+    The admin then creates all other accounts on the website (Nutzerverwaltung).
+    Demo accounts (test mode, `python start.py demo`): chef, mitarbeiter,
+    techniker1, techniker2 - password demo1234.
 
 WHAT RUNS WHERE (all on your computer, see docs/How-it-works.md)
     http://localhost:20800        the web page
@@ -130,6 +138,45 @@ def configure_mode(real: bool) -> None:
                 COLLECTOR_MQTT_USERNAME="", COLLECTOR_MQTT_PASSWORD="")
 
 
+def manage(*args: str, password: str | None = None, capture: bool = False) -> subprocess.CompletedProcess:
+    """Run the account tool (backend/batterywatch/tools/manage.py) inside the api container.
+    A password is handed over as environment variable BW_PASSWORD, not as an argument."""
+    cmd = ["docker", "compose", "exec", "-T"]
+    env = dict(os.environ)
+    if password is not None:
+        cmd += ["-e", "BW_PASSWORD"]
+        env["BW_PASSWORD"] = password
+    cmd += ["api", "python", "-m", "batterywatch.tools.manage", *args]
+    return subprocess.run(cmd, cwd=ROOT, env=env, text=True, capture_output=capture)
+
+
+def ask_new_password(label: str) -> str:
+    while True:
+        password = getpass.getpass(f"{label} (mind. 8 Zeichen, Eingabe unsichtbar): ").strip()
+        if len(password) < 8:
+            print("Zu kurz - bitte mindestens 8 Zeichen.")
+        elif getpass.getpass("Nochmal zur Kontrolle: ").strip() != password:
+            print("Die beiden Eingaben stimmen nicht überein - bitte nochmal.")
+        else:
+            return password
+
+
+def ensure_admin() -> None:
+    """No account yet (new installation or update from a version without login)?
+    Then create the first admin now - nobody could log in otherwise."""
+    result = manage("count-users", capture=True)
+    if result.returncode != 0:
+        fail("Konnte die Konten nicht prüfen:\n" + result.stderr[-500:])
+    if result.stdout.strip() != "0":
+        return
+    say("Es gibt noch kein Konto - lege den ersten ADMIN an")
+    print("Der Admin legt danach auf der Webseite (Nutzerverwaltung) alle weiteren Konten an.")
+    username = ask("Benutzername für den Admin", "admin").lower()
+    password = ask_new_password("Passwort für den Admin")
+    if manage("create-user", username, "--role", "admin", "--name", "Administrator", password=password).returncode:
+        fail("Admin konnte nicht angelegt werden (siehe oben).")
+
+
 def first_time_setup() -> None:
     say("Erster Start: lege die Einstellungsdatei .env an")
     print("(.env enthält Passwörter und wird NICHT nach GitHub hochgeladen.)")
@@ -167,7 +214,8 @@ def wait_for_api(port: str, seconds: int = 120) -> bool:
 # --- commands ------------------------------------------------------------------
 def cmd_start() -> None:
     check_docker()
-    if not ENV_FILE.exists():
+    first_time = not ENV_FILE.exists()
+    if first_time:
         first_time_setup()
     env = read_env()
     real = is_real_mode(env)
@@ -184,6 +232,9 @@ def cmd_start() -> None:
     api_port = env.get("API_PORT", "20801")
     if not wait_for_api(api_port):
         fail("Die API antwortet nicht. Details: docker compose logs api")
+    ensure_admin()
+    if first_time and not real and yes("\nDemo-Konten und Demo-Stammdaten für die Test-Nodes anlegen?", default=True):
+        cmd_demo()
 
     web = f"http://localhost:{env.get('WEB_PORT', '20800')}"
     print(f"""
@@ -193,10 +244,28 @@ Fertig! BatteryWatch läuft auf deinem Computer.
   API-Doku:     http://localhost:{api_port}/docs
   Modus:        {'ECHT - Node 101 vom Kurs-Broker (sendet alle 15 Min.)' if real else 'TEST - 8 erfundene Nodes'}
 
+  Anmelden mit deinem Admin-Konto (oder Demo-Konten, siehe python start.py help)
   Eingehende Nachrichten ansehen:   python start.py logs
   Stoppen:                          python start.py stop
 """)
     webbrowser.open(web)
+
+
+def cmd_demo() -> None:
+    """Demo accounts (password demo1234) + master data for SIM-001...SIM-008.
+    Only for trying things out locally - never on the server (public password)."""
+    check_docker()
+    say("Lege Demo-Konten und Demo-Stammdaten an")
+    manage("seed-demo")
+    print("Anmelden z. B. als 'chef', 'mitarbeiter' oder 'techniker1' mit Passwort demo1234.")
+
+
+def cmd_reset_password(username: str) -> None:
+    check_docker()
+    if not username:
+        fail("Bitte den Benutzernamen angeben: python start.py reset-password NAME")
+    password = ask_new_password(f"Neues Passwort für {username}")
+    manage("reset-password", username, password=password)
 
 
 def cmd_stop() -> None:
@@ -365,6 +434,8 @@ COMMANDS = {
     "logs": lambda args: cmd_logs(),
     "mode": lambda args: cmd_mode(args[0] if args else ""),
     "reset": lambda args: cmd_reset(),
+    "demo": lambda args: cmd_demo(),
+    "reset-password": lambda args: cmd_reset_password(args[0] if args else ""),
     "check-history": lambda args: cmd_history(["--check", *args]),
     "import-history": lambda args: cmd_history(args),
 }

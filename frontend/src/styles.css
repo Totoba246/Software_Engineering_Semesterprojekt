@@ -208,3 +208,109 @@ input[type=search] {
 .msgs li.bad .state { color: var(--red) }
 .msgs code { font-size: 12px; overflow-wrap: anywhere; color: var(--ink-soft) }
 @media (max-width: 640px) { .msgs li { grid-template-columns: 1fr auto } .msgs .body { grid-column: 1 / -1 } }
+
+/* =========================================================================
+ * Login, user menu, forms, user management (styles from the GUI draft)
+ * ========================================================================= */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
+.muted { color: var(--muted) }
+.q { font-size: 13px; font-weight: 600; color: var(--red) }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 14px 7px; border-radius: 7px;
+  background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 14px; text-decoration: none; border: 0; cursor: pointer }
+.btn:hover { filter: brightness(1.08) }
+.btn:disabled { opacity: .6; cursor: progress }
+.btn-s.danger { color: var(--red) }
+.btn-s.danger-solid { background: var(--red); border-color: var(--red); color: #fff }
+.add-btn { justify-self: start }
+.row-btns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
+
+/* form fields (search and select are styled further up) */
+input[type=text], input[type=password], input[type=email], input[type=number] {
+  width: 100%; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--bg); color: var(--ink); min-width: 0 }
+.form { display: grid; gap: 12px }
+.form .btn { justify-self: start }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+.field small.hint { font-weight: 400 }
+
+/* login page */
+.center-page { flex: 1; display: grid; place-items: center; padding: 24px 16px }
+.login { width: min(400px, 100%); display: grid; gap: 14px }
+.login h2 { margin: 0; font-size: 20px }
+.login-brand { justify-content: center; margin-bottom: 6px; font-size: 24px }
+.login .btn { width: 100% }
+
+/* user menu in the header */
+.usermenu { position: relative }
+.who { display: flex; align-items: center; gap: 9px; border: 0; background: none; cursor: pointer; padding: 4px 6px; border-radius: 8px; text-align: left }
+.who:hover { background: var(--hover) }
+.who b { display: block; font-size: 13px; line-height: 1.2 }
+.who small { display: block; color: var(--muted); font-size: 12px; line-height: 1.2 }
+.av { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--bg);
+  border: 1px solid var(--line); font-size: 12px; font-weight: 800; color: var(--ink-soft); flex: none }
+.float { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--float-shadow) }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 1000; min-width: 190px; padding: 6px; display: grid }
+.menu button { border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px }
+.menu button:hover { background: var(--hover) }
+.overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(0, 0, 0, .35); display: grid; place-items: center; padding: 16px }
+.dialog { width: min(420px, 100%) }
+.dialog h2 { margin: 0 0 12px; font-size: 18px }
+.toast { position: fixed; right: 16px; bottom: 16px; z-index: 2000; margin: 0; padding: 10px 14px; border-radius: 8px;
+  background: var(--ink); color: var(--surface); font-weight: 600; animation: fade 3s forwards }
+@keyframes fade { 0%, 80% { opacity: 1 } 100% { opacity: 0 } }
+
+/* warning banner below the header */
+.alerts { display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 8px 20px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 14px }
+.alerts > span { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.alerts a { font-weight: 700 }
+
+/* detail page additions */
+.detail.narrow { max-width: 640px }
+.facts.cols { grid-template-columns: auto 1fr auto 1fr }
+.warnish { color: var(--amber) }
+
+/* user management (admin) */
+.page { max-width: 1240px; margin: 0 auto; padding: 22px 20px 80px }
+.page .d-head { margin-top: 0 }
+.msg { padding: 10px 14px 9px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line);
+  border-left: 4px solid var(--green); margin: 0 0 16px; font-weight: 600 }
+.msg p { margin: 8px 0 }
+.pw { font-size: 16px; padding: 2px 8px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); user-select: all }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px }
+.stat b { display: block; font-size: 30px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em }
+.stat span { font-size: 13px; color: var(--muted) }
+.adm-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start }
+.tbl-filters { display: flex; gap: 8px; flex-wrap: wrap }
+.tbl-filters input { width: 220px }
+.tbl-filters select { width: auto }
+.users { width: 100%; border-collapse: collapse }
+.users th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line) }
+.users td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle }
+.users tr:last-child td { border-bottom: 0 }
+.users tr.locked .u b { color: var(--muted) }
+.u { display: flex; align-items: center; gap: 10px; min-width: 0 }
+.u > div { display: grid; min-width: 0 }
+.you { font-size: 11px; font-weight: 700; color: var(--accent); margin-left: 6px }
+.role { display: inline-block; padding: 2px 9px 1px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--line); background: var(--bg); white-space: nowrap }
+.role.r-admin { border-color: var(--ink); background: var(--ink); color: var(--surface) }
+.role-sel { width: auto; padding: 4px 8px; font-size: 13px }
+.st { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap }
+.act { display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap }
+
+@media (max-width: 1060px) { .adm-grid { grid-template-columns: 1fr } }
+@media (max-width: 860px) {
+  .facts.cols { grid-template-columns: auto 1fr }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .tbl-filters, .tbl-filters input { width: 100% }
+  .users thead { display: none }
+  .users tr { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--line) }
+  .users td { padding: 0; border: 0 }
+  .users td:nth-child(1), .users td:nth-child(5) { grid-column: 1 / -1 }
+  .users td:nth-child(4) { display: none }
+  .act { justify-content: flex-start }
+  .who span:last-child { display: none }
+}
+@media (max-width: 420px) { .two { grid-template-columns: 1fr } }

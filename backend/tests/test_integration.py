@@ -8,9 +8,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi.testclient import TestClient
 
-from batterywatch.api.main import create_app
 from batterywatch.collector.main import Collector, build_client
 from batterywatch.config import Settings
 from batterywatch.contract import build_payload, build_topic, parse_message
@@ -98,9 +96,9 @@ def test_import_shift_to_now_keeps_time_of_day(db_url, db):
 
 # --- API -----------------------------------------------------------------------
 @pytest.fixture
-def api(db_url):
-    with TestClient(create_app(make_settings(db_url))) as client:
-        yield client
+def api(make_client):
+    """API client logged in as a Firmenchef (sees all devices)."""
+    return make_client("chef")
 
 
 def seed(db_url, device_id="SIM-001", hours=48, volts_start=12.0, volts_end=11.0, end=None):

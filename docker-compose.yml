@@ -73,6 +73,11 @@ x-backend-env: &backend-env
   STATUS_LOW_BELOW: ${STATUS_LOW_BELOW:-50}                # below 50 % = yellow
   SMOOTHING_MINUTES: ${SMOOTHING_MINUTES:-60}              # average voltage over 60 min
   STALE_AFTER_MINUTES: ${STALE_AFTER_MINUTES:-45}          # no data for 45 min = "old"
+  # Login (ADR-09, explained in backend/batterywatch/config.py)
+  SESSION_HOURS: ${SESSION_HOURS:-168}                     # login valid for 7 days
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}                   # true only behind HTTPS
+  LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}             # wrong passwords before a short block
+  LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-5}
 
 services:
 
