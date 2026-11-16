@@ -7,11 +7,12 @@
  * technician), sorting. Clicking a device opens /geraete/<id>.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { isManagement } from '../api.js'
 import { BatteryLevel, Legend } from '../components/Battery.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
+import RouteLink from '../components/RouteLink.jsx'
 import { ago, STATUS_LABEL, STATUS_ORDER } from '../format.js'
 
 const STATUS_FILTERS = ['alle', 'krit', 'niedrig', 'ok']
@@ -64,6 +65,12 @@ export default function Overview({ devices, rules, me }) {
   const [staleOnly, setStaleOnly] = useState(false)
   const [sort, setSort] = useState('urgency')
   const [hoverId, setHoverId] = useState(null)
+  const [mapView, setMapView] = useState(false) // phones only: false = list, true = map
+  // the red warning strip links to /?status=krit - also when this page is already open
+  const wanted = params.get('status')
+  useEffect(() => {
+    if (STATUS_FILTERS.includes(wanted)) { setStatus(wanted); setMapView(false) }
+  }, [wanted])
   // the extra filters fold away so the list keeps its space; the browser remembers the choice
   const [moreOpen, setMoreOpen] = useState(() => readFlag('bw.filtersOpen'))
   const toggleMore = () => { setMoreOpen(!moreOpen); writeFlag('bw.filtersOpen', !moreOpen) }
@@ -106,7 +113,7 @@ export default function Overview({ devices, rules, me }) {
   }
 
   return (
-    <section className="overview" aria-label="Geräteübersicht">
+    <section className={`overview${mapView ? ' show-map' : ''}`} aria-label="Geräteübersicht">
       <aside className="side">
         <div className="filters">
           <div className="filter-top">
@@ -116,6 +123,11 @@ export default function Overview({ devices, rules, me }) {
               Filter{moreActive ? ` · ${moreActive}` : ''} {moreOpen ? '▴' : '▾'}
             </button>
             {manager && <Link className="btn btn-sm" to="/geraete/neu" title="Gerät hinzufügen">+ Gerät</Link>}
+          </div>
+          {/* phones show EITHER the list OR the map (styles.css hides this switch on wide screens) */}
+          <div className="seg view-switch" role="group" aria-label="Ansicht">
+            <button type="button" aria-pressed={!mapView} onClick={() => setMapView(false)}>Liste</button>
+            <button type="button" aria-pressed={mapView} onClick={() => setMapView(true)}>Karte</button>
           </div>
           <div className="seg" role="group" aria-label="Nach Akkustand filtern">
             {STATUS_FILTERS.map((s) => (
@@ -177,7 +189,7 @@ export default function Overview({ devices, rules, me }) {
         ) : (
           <ul className="list">
             {shown.map((d) => (
-              <li key={d.device_id}>
+              <li key={d.device_id} className="row-wrap">
                 <Link
                   to={`/geraete/${encodeURIComponent(d.device_id)}`}
                   className={`row${hoverId === d.device_id ? ' hl' : ''}`}
@@ -202,6 +214,8 @@ export default function Overview({ devices, rules, me }) {
                     {ago(d.minutes_since_last_message ?? d.minutes_since_last_seen)}
                   </span>
                 </Link>
+                {/* straight to Google Maps, without opening the device first */}
+                <RouteLink device={d} variant="icon" />
               </li>
             ))}
           </ul>

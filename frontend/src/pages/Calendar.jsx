@@ -1,26 +1,36 @@
 /*
  * PAGE "Kalender" (address /kalender, optionally /kalender?g=101 to jump to a device)
  *
- *   F12 / issue #11  expected battery failures in a month view.
- *                    Two entries per device, both calculated by the server from the
- *                    voltage trend of the last 72 h (GET /api/devices):
- *                      yellow  "wird kritisch"       estimated_critical_at (< 20 %)
- *                      red     "voraussichtlich leer" estimated_empty_at   (0 %)
+ *   F12 / issue #11  expected battery failures. Two entries per device, both calculated
+ *                    by the server from the voltage trend of the last 72 h (GET /api/devices):
+ *                      amber  "Wird kritisch"        estimated_critical_at (< 20 %)
+ *                      red    "Voraussichtlich leer" estimated_empty_at    (0 %)
  *                    Firmenchef/Mitarbeiter see all devices, Servicetechniker only
  *                    their own (the server filters the device list).
  *   F13 / issue #12  Servicetechniker enter PRIVATE appointments: when they want to
  *                    replace which battery (blue). Only they can see them
  *                    (GET/POST/DELETE /api/appointments, other roles get 403).
  *
- * Layout taken from the GUI draft batterywatch-entwurf.html (section "Kalender"):
- * month grid on the left; on the right the selected day, the appointment form
- * (technicians only) and the devices that are due next.
+ * HOW THE PAGE IS BUILT
+ *   "Jetzt fällig"   red box at the top: devices that are critical right now
+ *   WEEK VIEW        the default, and the only view on phones: seven days with
+ *                    every entry written out (what, when, which device, where)
+ *                    and the actions right on it: Route (Google Maps),
+ *                    "Wechsel einplanen" / "Löschen".
+ *                    Phone: a strip Mo-So to jump to a day, days stacked below.
+ *                    Wide screen: seven columns next to each other.
+ *   MONTH VIEW       wide screens only (switch "Woche | Monat"): the overview grid;
+ *                    click a day to see its entries on the right.
+ *   "Als Nächstes fällig"  upcoming devices; a click jumps to that week.
+ *   Appointments are entered in a small dialog that opens from "Wechsel
+ *   einplanen" (device + suggested day prefilled) or "+ Termin" on a day.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { BatteryLevel } from '../components/Battery.jsx'
+import RouteLink from '../components/RouteLink.jsx'
 import { pct } from '../format.js'
 import { usePolling } from '../usePolling.js'
 
@@ -29,8 +39,9 @@ const WEEKDAYS_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag'
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 const DAY = 24 * 3600e3
 
+/* --- date helpers (everything in the browser's time zone) ------------------------------ */
 const p2 = (n) => String(n).padStart(2, '0')
-// "2026-11-17" in the browser's time zone (the key of a calendar day)
+// "2026-11-17" (the key of a calendar day)
 export const dayKey = (date) => {
   const d = new Date(date)
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
@@ -39,6 +50,8 @@ const parseKey = (key) => {
   const [y, m, d] = key.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
+const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n)
+const weekStart = (date) => addDays(date, -((date.getDay() + 6) % 7)) // the Monday of that week
 const hhmm = (date) => {
   const d = new Date(date)
   return `${p2(d.getHours())}:${p2(d.getMinutes())}`
@@ -46,6 +59,17 @@ const hhmm = (date) => {
 export const shortDay = (date) => {
   const d = new Date(date)
   return `${WEEKDAYS_LONG[d.getDay()].slice(0, 2)} ${d.getDate()}.${p2(d.getMonth() + 1)}.`
+}
+// calendar week number (ISO 8601, as used in Germany)
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7))
+  return Math.ceil(((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY + 1) / 7)
+}
+function weekTitle(start) {
+  const end = addDays(start, 6)
+  const from = start.getMonth() === end.getMonth() ? `${start.getDate()}.` : `${start.getDate()}. ${MONTHS[start.getMonth()]}`
+  return `${from} – ${end.getDate()}. ${MONTHS[end.getMonth()]} ${end.getFullYear()}`
 }
 
 // The date the device should be replaced by: when it becomes critical (or empty).
@@ -58,10 +82,31 @@ export function suggestedDay(d) {
   return dayKey(Math.max(today.getTime(), new Date(due).getTime() - DAY))
 }
 
+/* --- small helpers ------------------------------------------------------------------------ */
+// true while the screen is narrower than a tablet (re-evaluated when the window is resized/rotated)
+function useIsPhone() {
+  const query = '(max-width: 760px)'
+  const [phone, setPhone] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const update = () => setPhone(mq.matches)
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return phone
+}
+// remembered per browser; storage can be unavailable (private window) -> just don't remember
+function readPref(key) {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+function writePref(key, value) {
+  try { localStorage.setItem(key, value) } catch { /* ignore */ }
+}
+
 const EVENT = {
-  appt: { cls: 'appt', order: 0 },
-  crit: { cls: 's-niedrig', order: 1, label: 'wird kritisch' },
-  empty: { cls: 's-krit', order: 2, label: 'voraussichtlich leer' },
+  appt: { cls: 'appt', order: 0, label: 'Wechseltermin' },
+  crit: { cls: 's-niedrig', order: 1, label: 'Wird kritisch' },
+  empty: { cls: 's-krit', order: 2, label: 'Voraussichtlich leer' },
 }
 
 function buildEvents(devices, appointments) {
@@ -80,10 +125,126 @@ function buildEvents(devices, appointments) {
 }
 
 function DeviceName({ d, fallback }) {
-  return d ? <Link to={`/geraete/${encodeURIComponent(d.device_id)}`}>{d.name}</Link> : <b>{fallback}</b>
+  return d ? <Link className="entry-name" to={`/geraete/${encodeURIComponent(d.device_id)}`}>{d.name}</Link>
+    : <b className="entry-name">{fallback}</b>
 }
 
-/* --- month grid ---------------------------------------------------------------------- */
+/* --- one calendar entry, written out ---------------------------------------------------------- */
+function Entry({ e, tech, planned, onPlan, onDelete }) {
+  const [confirm, setConfirm] = useState(false)
+  if (e.type === 'appt') {
+    const d = e.a.assigned ? e.d : null
+    return (
+      <li className="entry appt">
+        <div className="entry-top"><span className="tag">Wechseltermin</span><b>{hhmm(e.at)} Uhr</b></div>
+        <DeviceName d={d} fallback={e.a.device_name} />
+        {d?.location && <span className="meta">{d.location} · Akku {pct(d.soc_percent)}</span>}
+        {!e.a.assigned && <span className="meta warn">Gerät ist Ihnen nicht mehr zugeordnet</span>}
+        {e.a.note && <span className="meta note">„{e.a.note}“</span>}
+        <div className="entry-actions">
+          {d && <RouteLink device={d} />}
+          {confirm ? (
+            <>
+              <button type="button" className="btn-s danger-solid" onClick={() => onDelete(e.a)}>Wirklich löschen</button>
+              <button type="button" className="btn-s" onClick={() => setConfirm(false)}>Abbrechen</button>
+            </>
+          ) : (
+            <button type="button" className="btn-s danger" onClick={() => setConfirm(true)}>Löschen</button>
+          )}
+        </div>
+      </li>
+    )
+  }
+  const past = new Date(e.at).getTime() <= Date.now()
+  const what = e.type === 'crit' ? (past ? 'Bereits kritisch' : 'Wird kritisch') : (past ? 'Bereits leer' : 'Voraussichtlich leer')
+  return (
+    <li className={`entry ${EVENT[e.type].cls}`}>
+      <div className="entry-top"><span className="tag">{what}</span>{!past && <b>ca. {hhmm(e.at)} Uhr</b>}</div>
+      <DeviceName d={e.d} />
+      <span className="meta">{[e.d.location, `Akku ${pct(e.d.soc_percent)}`].filter(Boolean).join(' · ')}</span>
+      {tech ? (
+        planned && <span className="meta ok">Ihr Termin: {shortDay(planned.starts_at)}, {hhmm(planned.starts_at)} Uhr</span>
+      ) : (
+        <span className="meta">
+          {e.d.technician ? `Servicetechniker: ${e.d.technician.display_name}` : <span className="warn">Kein Servicetechniker zugeordnet</span>}
+        </span>
+      )}
+      <div className="entry-actions">
+        <RouteLink device={e.d} />
+        {tech && !planned && <button type="button" className="btn-s plan-btn" onClick={() => onPlan(e.d)}>Wechsel einplanen</button>}
+      </div>
+    </li>
+  )
+}
+
+function Entries({ list, ...rest }) {
+  return (
+    <ul className="entries">
+      {list.map((e, i) => (
+        <Entry key={e.type === 'appt' ? `a${e.a.id}` : `${e.type}${e.d.device_id}${i}`} e={e}
+          planned={e.d ? rest.plannedFor[e.d.device_id] : null} {...rest} />
+      ))}
+    </ul>
+  )
+}
+
+/* --- WEEK VIEW ------------------------------------------------------------------------------------
+ * Phones: strip Mo-So on top (tap = jump to the day), the seven days stacked below.
+ * Wide screens: seven columns (the strip is hidden by styles.css).                               */
+function WeekView({ start, sel, events, tech, onSelect, onPlanDay, entryProps }) {
+  const today = dayKey(new Date())
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  const jump = (key) => {
+    onSelect(key)
+    document.getElementById(`tag-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  return (
+    <>
+      <div className="wk-strip" role="group" aria-label="Wochentag wählen">
+        {days.map((date, i) => {
+          const key = dayKey(date)
+          const list = events[key] ?? []
+          const cls = ['wk-chip', key === today && 'today', key === sel && 'sel'].filter(Boolean).join(' ')
+          return (
+            <button key={key} type="button" className={cls} aria-pressed={key === sel} onClick={() => jump(key)}
+              aria-label={`${WEEKDAYS_LONG[date.getDay()]}, ${date.getDate()}. ${MONTHS[date.getMonth()]}: ${list.length} ${list.length === 1 ? 'Eintrag' : 'Einträge'}`}>
+              <span>{WEEKDAYS[i]}</span>
+              <b>{date.getDate()}</b>
+              <span className="dots" aria-hidden="true">
+                {list.slice(0, 4).map((e, j) => <i key={j} className={`dot ${EVENT[e.type].cls}`} />)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="week">
+        {days.map((date) => {
+          const key = dayKey(date)
+          const list = events[key] ?? []
+          const cls = ['wday', key === today && 'today', key === sel && 'sel', key < today && 'past', !list.length && 'free']
+            .filter(Boolean).join(' ')
+          return (
+            <section key={key} id={`tag-${key}`} className={cls} aria-label={`${WEEKDAYS_LONG[date.getDay()]}, ${date.getDate()}. ${MONTHS[date.getMonth()]}`}>
+              <header className="wday-head">
+                <span className="wday-name">{WEEKDAYS_LONG[date.getDay()]}</span>
+                <span className="wday-date">{date.getDate()}.{p2(date.getMonth() + 1)}.</span>
+                {key === today && <span className="today-tag">Heute</span>}
+                {tech && key >= today && (
+                  <button type="button" className="btn-s add" onClick={() => onPlanDay(key)}
+                    title="Wechseltermin an diesem Tag eintragen"
+                    aria-label={`Termin am ${date.getDate()}.${date.getMonth() + 1}. eintragen`}>+<span className="add-label"> Termin</span></button>
+                )}
+              </header>
+              {list.length ? <Entries list={list} tech={tech} {...entryProps} /> : <p className="wday-free">Keine Einträge</p>}
+            </section>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+/* --- MONTH VIEW (wide screens) ------------------------------------------------------------------- */
 function MonthGrid({ month, sel, events, onSelect }) {
   const first = new Date(month.y, month.m, 1)
   const offset = (first.getDay() + 6) % 7 // Monday = first column
@@ -97,7 +258,7 @@ function MonthGrid({ month, sel, events, onSelect }) {
         const date = new Date(month.y, month.m, 1 - offset + i)
         const key = dayKey(date)
         const list = events[key] ?? []
-        const cls = ['cal-day', date.getMonth() !== month.m && 'out', key === today && 'today', key === sel && 'sel']
+        const cls = ['cal-day', date.getMonth() !== month.m && 'out', key === today && 'today', key === sel && 'sel', key < today && 'past']
           .filter(Boolean).join(' ')
         const label = `${WEEKDAYS_LONG[date.getDay()]}, ${date.getDate()}. ${MONTHS[date.getMonth()]}: ` +
           (list.length ? `${list.length} ${list.length === 1 ? 'Eintrag' : 'Einträge'}` : 'keine Einträge')
@@ -111,11 +272,6 @@ function MonthGrid({ month, sel, events, onSelect }) {
               </span>
             ))}
             {list.length > 3 && <span className="ev-more">+{list.length - 3} weitere</span>}
-            {list.length > 0 && (
-              <span className="dots" aria-hidden="true">
-                {list.map((e, j) => <i key={j} className={`dot ${EVENT[e.type].cls}`} />)}
-              </span>
-            )}
           </button>
         )
       })}
@@ -123,68 +279,29 @@ function MonthGrid({ month, sel, events, onSelect }) {
   )
 }
 
-/* --- the selected day ----------------------------------------------------------------------- */
-function DayAgenda({ list, tech, onPlan, onDelete }) {
-  if (!list.length) {
-    return <p className="hint">Keine {tech ? 'Ausfälle oder Termine' : 'voraussichtlichen Ausfälle'} an diesem Tag.</p>
-  }
-  const now = Date.now()
-  return (
-    <ul className="agenda">
-      {list.map((e, i) => {
-        if (e.type === 'appt') {
-          return (
-            <li key={`a${e.a.id}`} className="ag appt"><i className="dot" />
-              <div>
-                <b>{hhmm(e.at)} Uhr · Batteriewechsel</b>
-                <DeviceName d={e.a.assigned ? e.d : null} fallback={e.a.device_name} />
-                {!e.a.assigned && <span className="meta warn">Gerät ist Ihnen nicht mehr zugeordnet</span>}
-                {e.a.note && <span className="meta">{e.a.note}</span>}
-                <button type="button" className="reset" onClick={() => onDelete(e.a)}>Termin löschen</button>
-              </div>
-            </li>
-          )
-        }
-        const past = new Date(e.at).getTime() <= now
-        const what = e.type === 'crit' ? (past ? 'Bereits kritisch' : 'Wird kritisch') : (past ? 'Bereits leer' : 'Voraussichtlich leer')
-        return (
-          <li key={`${e.type}${e.d.device_id}${i}`} className={`ag ${EVENT[e.type].cls}`}><i className="dot" />
-            <div>
-              <DeviceName d={e.d} />
-              <span className="meta">
-                {what}{!past && ` gegen ${hhmm(e.at)} Uhr`}, aktuell {pct(e.d.soc_percent)}
-              </span>
-              {tech ? (
-                <button type="button" className="reset" onClick={() => onPlan(e.d)}>Wechsel einplanen</button>
-              ) : (
-                <span className="meta">
-                  {e.d.technician ? `Servicetechniker: ${e.d.technician.display_name}` : <span className="warn">Kein Servicetechniker zugeordnet</span>}
-                </span>
-              )}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-/* --- form for an own appointment (Servicetechniker, F13) -------------------------------------- */
-function AppointmentForm({ devices, form, setForm, onSaved }) {
+/* --- form for an own appointment (Servicetechniker, F13), shown in a dialog ----------------------- */
+function AppointmentForm({ devices, form, setForm, onSaved, onCancel }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
 
-  if (!devices.length) return <p className="hint">Ihnen sind noch keine Geräte zugeordnet.</p>
+  if (!devices.length) {
+    return (
+      <>
+        <p className="hint">Ihnen sind noch keine Geräte zugeordnet.</p>
+        <button className="btn-s" type="button" onClick={onCancel}>Schließen</button>
+      </>
+    )
+  }
 
-  // warnings like in the GUI draft: too late or in the past (saving is still allowed)
+  // warnings: too late or in the past (saving is still allowed)
   const d = devices.find((x) => x.device_id === form.device)
-  let hint = { warn: false, text: 'Termine sind privat und nur für Sie sichtbar.' }
-  if (form.date && form.date < dayKey(new Date())) hint = { warn: true, text: 'Das Datum liegt in der Vergangenheit.' }
+  let hint = null
+  if (form.date && form.date < dayKey(new Date())) hint = 'Das Datum liegt in der Vergangenheit.'
   else if (d?.estimated_empty_at && form.date > dayKey(d.estimated_empty_at)) {
-    hint = { warn: true, text: `Achtung: Das Gerät ist voraussichtlich schon am ${shortDay(d.estimated_empty_at)} leer.` }
+    hint = `Achtung: Das Gerät ist voraussichtlich schon am ${shortDay(d.estimated_empty_at)} leer.`
   } else if (d?.estimated_critical_at && form.date > dayKey(d.estimated_critical_at)) {
-    hint = { warn: true, text: `Hinweis: Der Akku ist voraussichtlich ab ${shortDay(d.estimated_critical_at)} kritisch.` }
+    hint = `Hinweis: Der Akku ist voraussichtlich ab ${shortDay(d.estimated_critical_at)} kritisch.`
   }
 
   async function submit(e) {
@@ -197,8 +314,7 @@ function AppointmentForm({ devices, form, setForm, onSaved }) {
     setError('')
     try {
       const starts_at = new Date(`${form.date}T${form.time}`).toISOString() // local time -> UTC
-      const saved = await api.createAppointment({ device_id: form.device, starts_at, note: form.note })
-      onSaved(saved)
+      onSaved(await api.createAppointment({ device_id: form.device, starts_at, note: form.note }))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -222,36 +338,72 @@ function AppointmentForm({ devices, form, setForm, onSaved }) {
       <label className="field"><span>Notiz (optional)</span>
         <input type="text" value={form.note} onChange={set('note')} maxLength={200} placeholder="z. B. Ersatzakku mitnehmen" />
       </label>
-      <p className={hint.warn ? 'hint warn' : 'hint'}>{hint.text}</p>
-      {error && <p className="hint warn">{error}</p>}
-      <button className="btn" type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Termin speichern'}</button>
+      {hint ? <p className="notice warn">{hint}</p> : <p className="hint">Termine sind privat und nur für Sie sichtbar.</p>}
+      {error && <p className="notice warn" role="alert">{error}</p>}
+      <div className="row-btns">
+        <button className="btn" type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Termin speichern'}</button>
+        <button className="btn-s" type="button" onClick={onCancel}>Abbrechen</button>
+      </div>
     </form>
   )
 }
 
-/* --- devices due next ---------------------------------------------------------------------- */
+/* --- "Jetzt fällig": devices that are critical right now -------------------------------------------- */
+function DueNow({ devices, tech, plannedFor, onPlan }) {
+  const now = devices.filter((d) => d.status === 'krit').sort((a, b) => (a.soc_percent ?? 0) - (b.soc_percent ?? 0))
+  if (!now.length) return null
+  return (
+    <section className="card due-now" aria-label="Jetzt fällig">
+      <h2>Jetzt fällig: {now.length} {now.length === 1 ? 'Gerät' : 'Geräte'} mit kritischem Akku</h2>
+      <ul className="due-list">
+        {now.map((d) => {
+          const planned = plannedFor[d.device_id]
+          return (
+            <li key={d.device_id}>
+              <BatteryLevel device={d} />
+              <span className="info">
+                <DeviceName d={d} />
+                <span className="meta">
+                  {[d.location, d.category].filter(Boolean).join(' · ') || d.device_id}
+                  {!tech && (d.technician ? ` · ${d.technician.display_name}` : ' · kein Servicetechniker')}
+                </span>
+                {planned && <span className="meta ok">Ihr Termin: {shortDay(planned.starts_at)}, {hhmm(planned.starts_at)} Uhr</span>}
+              </span>
+              <span className="entry-actions">
+                <RouteLink device={d} />
+                {tech && !planned && <button type="button" className="btn-s plan-btn" onClick={() => onPlan(d)}>Wechsel einplanen</button>}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+/* --- devices due next (not critical yet) ----------------------------------------------------------- */
 function DueNext({ devices, onSelect }) {
-  const due = devices.filter(dueAt).sort((a, b) => new Date(dueAt(a)) - new Date(dueAt(b)))
-  const without = devices.length - due.length
+  const upcoming = devices.filter((d) => d.status !== 'krit' && dueAt(d)).sort((a, b) => new Date(dueAt(a)) - new Date(dueAt(b)))
+  const without = devices.filter((d) => !dueAt(d) && d.status !== 'krit').length
   return (
     <>
-      {due.length ? (
+      {upcoming.length ? (
         <ul className="soon">
-          {due.slice(0, 6).map((d) => (
+          {upcoming.slice(0, 6).map((d) => (
             <li key={d.device_id}>
-              <button type="button" onClick={() => onSelect(dayKey(dueAt(d)))}>
+              <button type="button" onClick={() => onSelect(dayKey(dueAt(d)))} title="Im Kalender zeigen">
                 <BatteryLevel device={d} />
                 <span className="info">
                   <span className="name">{d.name}</span>
                   <span className="meta">{[d.location, d.category].filter(Boolean).join(' · ') || d.device_id}</span>
                 </span>
-                <span className="when">{new Date(dueAt(d)) <= new Date() ? 'jetzt' : shortDay(dueAt(d))}</span>
+                <span className="when">{shortDay(dueAt(d))}</span>
               </button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="hint">Für kein Gerät ist ein Ausfall absehbar.</p>
+        <p className="hint">Für kein weiteres Gerät ist ein Ausfall absehbar.</p>
       )}
       {without > 0 && (
         <p className="hint" style={{ marginTop: 10 }}>
@@ -263,32 +415,37 @@ function DueNext({ devices, onSelect }) {
 }
 
 /* --- the page ---------------------------------------------------------------------------------- */
-const EMPTY_FORM = { device: '', date: '', time: '08:00', note: '' }
-
 export default function Calendar({ devices, me }) {
   const tech = me.role === 'techniker'
+  const phone = useIsPhone()
   const [params] = useSearchParams()
-  const [month, setMonth] = useState(() => ({ y: new Date().getFullYear(), m: new Date().getMonth() }))
+  const [viewPref, setViewPref] = useState(() => (readPref('bw.calView') === 'month' ? 'month' : 'week'))
+  const view = phone ? 'week' : viewPref // phones: always the week
   const [sel, setSel] = useState(() => dayKey(new Date()))
-  const [form, setForm] = useState({ ...EMPTY_FORM, date: dayKey(new Date()) })
-  const [msg, setMsg] = useState('')
+  const [dialog, setDialog] = useState(null) // values of the appointment form while it is open
+  const [msg, setMsg] = useState(null) // { text, warn }
   const appts = usePolling(() => (tech ? api.appointments() : Promise.resolve([])), [tech])
+  const viewRef = useRef(null)
 
   const list = devices ?? []
   const events = useMemo(() => buildEvents(list, appts.data ?? []), [list, appts.data])
+  // the next upcoming own appointment per device ("Ihr Termin: ..." instead of "Wechsel einplanen")
+  const plannedFor = useMemo(() => {
+    const out = {}
+    const from = Date.now() - 3600e3
+    for (const a of [...(appts.data ?? [])].sort((x, y) => new Date(x.starts_at) - new Date(y.starts_at))) {
+      if (new Date(a.starts_at).getTime() > from && !out[a.device_id]) out[a.device_id] = a
+    }
+    return out
+  }, [appts.data])
 
-  const select = (key) => {
-    const d = parseKey(key)
-    setSel(key)
-    setMonth({ y: d.getFullYear(), m: d.getMonth() })
-    if (tech) setForm((f) => ({ ...f, date: key }))
-  }
-  const plan = (d) => {
-    const key = suggestedDay(d)
-    select(key)
-    setForm((f) => ({ ...f, device: d.device_id, date: key }))
-    setMsg('')
-  }
+  const selDate = parseKey(sel)
+  const start = weekStart(selDate)
+  const month = { y: selDate.getFullYear(), m: selDate.getMonth() }
+
+  const plan = (d) => { setMsg(null); setDialog({ device: d.device_id, date: suggestedDay(d), time: '08:00', note: '' }) }
+  const planDay = (key) => { setMsg(null); setDialog({ device: '', date: key, time: '08:00', note: '' }) }
+  const showDay = (key) => { setSel(key); viewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
   // /kalender?g=101 (link from the detail page): jump to that device
   const g = params.get('g')
@@ -296,81 +453,117 @@ export default function Calendar({ devices, me }) {
     const d = g && list.find((x) => x.device_id === g)
     if (!d) return
     if (tech) plan(d)
-    else if (dueAt(d)) select(dayKey(dueAt(d)))
+    else if (dueAt(d)) setSel(dayKey(dueAt(d)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [g, devices === null])
 
-  const shiftMonth = (step) => {
-    if (step === 0) return select(dayKey(new Date()))
-    const d = new Date(month.y, month.m + step, 1)
-    setMonth({ y: d.getFullYear(), m: d.getMonth() })
+  const shift = (step) => {
+    if (step === 0) return setSel(dayKey(new Date()))
+    if (view === 'week') return setSel(dayKey(addDays(selDate, 7 * step)))
+    setSel(dayKey(new Date(month.y, month.m + step, 1)))
   }
+  const setView = (v) => { setViewPref(v); writePref('bw.calView', v) }
 
   async function remove(a) {
     try {
       await api.deleteAppointment(a.id)
-      setMsg('Termin gelöscht.')
+      setMsg({ text: 'Termin gelöscht.' })
       appts.refresh()
     } catch (err) {
-      setMsg(`Löschen fehlgeschlagen: ${err.message}`)
+      setMsg({ text: `Löschen fehlgeschlagen: ${err.message}`, warn: true })
     }
   }
-
   const saved = (a) => {
-    setMsg(`Termin am ${shortDay(a.starts_at)} um ${hhmm(a.starts_at)} Uhr gespeichert.`)
-    setForm({ ...EMPTY_FORM, date: dayKey(a.starts_at) })
-    select(dayKey(a.starts_at))
+    setDialog(null)
+    setMsg({ text: `Termin am ${shortDay(a.starts_at)} um ${hhmm(a.starts_at)} Uhr gespeichert.` })
+    setSel(dayKey(a.starts_at))
     appts.refresh()
   }
 
-  const selDate = parseKey(sel)
+  const entryProps = { plannedFor, onPlan: plan, onDelete: remove }
+  const dayList = events[sel] ?? []
+  const weekEmpty = Array.from({ length: 7 }, (_, i) => events[dayKey(addDays(start, i))]).every((l) => !l)
+  const thisWeek = dayKey(start) === dayKey(weekStart(new Date()))
+
   return (
     <div className="scroll">
-      <div className="page">
+      <div className="page cal-page">
         <div className="d-head">
           <h1>Kalender</h1>
-          <p>
-            {tech
-              ? 'Voraussichtliche Ausfälle Ihrer Geräte und Ihre eigenen Wechseltermine'
-              : 'Voraussichtliche Batterie-Ausfälle aller Geräte'}
-            , geschätzt aus dem Spannungstrend der letzten 72 Stunden
-          </p>
+          <p>{tech ? 'Voraussichtliche Ausfälle Ihrer Geräte und Ihre Wechseltermine' : 'Voraussichtliche Batterie-Ausfälle aller Geräte'}</p>
         </div>
-        {msg && <p className="msg" role="status">{msg}</p>}
-        {appts.error && <p className="hint warn">Termine konnten nicht geladen werden: {appts.error.message}</p>}
-        <div className="cal-wrap">
-          <section className="card" aria-label="Monatsansicht">
+        {msg && <p className={msg.warn ? 'notice warn' : 'msg'} role="status">{msg.text}</p>}
+        {appts.error && <p className="notice warn">Termine konnten nicht geladen werden: {appts.error.message}</p>}
+
+        <DueNow devices={list} tech={tech} plannedFor={plannedFor} onPlan={plan} />
+
+        <div className={`cal-wrap view-${view}`}>
+          <section className="card cal-main" aria-label={view === 'week' ? 'Wochenansicht' : 'Monatsansicht'} ref={viewRef}>
             <div className="cal-head">
-              <h2>{MONTHS[month.m]} {month.y}</h2>
-              <button type="button" className="btn-s" onClick={() => shiftMonth(-1)} aria-label="Vorheriger Monat">‹</button>
-              <button type="button" className="btn-s" onClick={() => shiftMonth(0)}>Heute</button>
-              <button type="button" className="btn-s" onClick={() => shiftMonth(1)} aria-label="Nächster Monat">›</button>
+              <h2>
+                {view === 'week' ? weekTitle(start) : `${MONTHS[month.m]} ${month.y}`}
+                {view === 'week' && <small>KW {isoWeek(start)}{thisWeek && ' · diese Woche'}</small>}
+              </h2>
+              <div className="cal-nav">
+                <button type="button" className="btn-s" onClick={() => shift(-1)} aria-label={view === 'week' ? 'Vorherige Woche' : 'Vorheriger Monat'}>‹</button>
+                <button type="button" className="btn-s" onClick={() => shift(0)}>Heute</button>
+                <button type="button" className="btn-s" onClick={() => shift(1)} aria-label={view === 'week' ? 'Nächste Woche' : 'Nächster Monat'}>›</button>
+              </div>
+              {!phone && (
+                <div className="seg small" role="group" aria-label="Ansicht">
+                  <button type="button" aria-pressed={view === 'week'} onClick={() => setView('week')}>Woche</button>
+                  <button type="button" aria-pressed={view === 'month'} onClick={() => setView('month')}>Monat</button>
+                </div>
+              )}
+              {tech && <button type="button" className="btn btn-sm" onClick={() => planDay(sel >= dayKey(new Date()) ? sel : dayKey(new Date()))}>+ Termin</button>}
             </div>
-            <MonthGrid month={month} sel={sel} events={events} onSelect={select} />
+
+            {view === 'week' ? (
+              <>
+                <WeekView start={start} sel={sel} events={events} tech={tech} onSelect={setSel} onPlanDay={planDay} entryProps={entryProps} />
+                {weekEmpty && devices && (
+                  <p className="hint week-empty">In dieser Woche ist kein Ausfall absehbar{tech ? ' und kein Termin eingetragen' : ''}.</p>
+                )}
+              </>
+            ) : (
+              <MonthGrid month={month} sel={sel} events={events} onSelect={setSel} />
+            )}
             <p className="cal-legend">
-              <span className="s-niedrig"><i className="dot" />wird kritisch</span>
+              <span className="s-niedrig"><i className="dot" />wird kritisch (unter 20 %)</span>
               <span className="s-krit"><i className="dot" />voraussichtlich leer</span>
               {tech && <span className="appt"><i className="dot" />eigener Wechseltermin</span>}
+              <span>Schätzung aus dem Spannungstrend der letzten 72 Std.</span>
             </p>
           </section>
+
           <div className="cal-side">
-            <section className="card" aria-label="Ausgewählter Tag">
-              <h2>{WEEKDAYS_LONG[selDate.getDay()]}, {selDate.getDate()}. {MONTHS[selDate.getMonth()]}</h2>
-              <DayAgenda list={events[sel] ?? []} tech={tech} onPlan={plan} onDelete={remove} />
-            </section>
-            {tech && (
-              <section className="card" aria-label="Wechseltermin eintragen">
-                <h2>Wechseltermin eintragen</h2>
-                <AppointmentForm devices={list} form={form} setForm={setForm} onSaved={saved} />
+            {view === 'month' && (
+              <section className="card" aria-label="Ausgewählter Tag">
+                <div className="card-head">
+                  <h2>{WEEKDAYS_LONG[selDate.getDay()]}, {selDate.getDate()}. {MONTHS[selDate.getMonth()]}</h2>
+                  {tech && sel >= dayKey(new Date()) && <button type="button" className="btn-s" onClick={() => planDay(sel)}>+ Termin</button>}
+                </div>
+                {dayList.length ? <Entries list={dayList} tech={tech} {...entryProps} />
+                  : <p className="hint">Keine {tech ? 'Ausfälle oder Termine' : 'voraussichtlichen Ausfälle'} an diesem Tag.</p>}
               </section>
             )}
             <section className="card" aria-label="Als Nächstes fällig">
               <h2>Als Nächstes fällig</h2>
-              {devices ? <DueNext devices={list} onSelect={select} /> : <p className="hint">Lade …</p>}
+              {devices ? <DueNext devices={list} onSelect={showDay} /> : <p className="hint">Lade …</p>}
             </section>
           </div>
         </div>
       </div>
+
+      {dialog && (
+        <div className="overlay sheet" role="dialog" aria-modal="true" aria-label="Wechseltermin eintragen"
+          onClick={(e) => { if (e.target === e.currentTarget) setDialog(null) }}>
+          <section className="card dialog">
+            <h2>Wechseltermin eintragen</h2>
+            <AppointmentForm devices={list} form={dialog} setForm={setDialog} onSaved={saved} onCancel={() => setDialog(null)} />
+          </section>
+        </div>
+      )}
     </div>
   )
 }
