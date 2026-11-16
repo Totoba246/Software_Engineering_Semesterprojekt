@@ -22,6 +22,7 @@ import { api, isManagement } from '../api.js'
 import { BatteryIcon } from '../components/Battery.jsx'
 import DeviceForm from '../components/DeviceForm.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
+import RouteLink from '../components/RouteLink.jsx'
 import HistoryChart, { METRICS, NIGHT_FROM, NIGHT_TO } from '../components/HistoryChart.jsx'
 import { ago, dateTime, num, STATUS_LABEL } from '../format.js'
 import { shortDay } from './Calendar.jsx'
@@ -228,10 +229,12 @@ export default function DeviceDetail({ rules, me, onChanged }) {
         <div className="d-head">
           <h1>{d.name}</h1>
           <p>{[d.name !== d.device_id && d.device_id, d.category, d.location].filter(Boolean).join(' · ') || d.device_type}</p>
+          {/* opens Google Maps with this device as destination (components/RouteLink.jsx) */}
+          <div className="d-actions"><RouteLink device={d} variant="btn" /></div>
         </div>
         {error && <p className="hint warn">Aktualisierung fehlgeschlagen: {error.message}</p>}
         {d.last_message_error && (
-          <div className="alert">
+          <div className="alert" role="alert">
             <strong>Die letzte Nachricht ({ago(d.minutes_since_last_message)}) wurde verworfen.</strong>
             <span>{d.last_message_error}</span>
             <span className="hint">
@@ -303,7 +306,10 @@ export default function DeviceDetail({ rules, me, onChanged }) {
           <MessagesCard device={d} />
 
           <section className="card span2" aria-label="Standort">
-            <h2>Standort</h2>
+            <div className="card-head">
+              <h2>Standort{d.location ? `: ${d.location}` : ''}</h2>
+              <RouteLink device={d} />
+            </div>
             {d.position ? (
               <div className="mini"><DeviceMap devices={[d]} selectedId={d.device_id} /></div>
             ) : (

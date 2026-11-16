@@ -262,9 +262,6 @@ input[type=text], input[type=password], input[type=email], input[type=number] {
 @keyframes fade { 0%, 80% { opacity: 1 } 100% { opacity: 0 } }
 
 /* warning banner below the header */
-.alerts { display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 8px 20px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 14px }
-.alerts > span { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap }
-.alerts a { font-weight: 700 }
 
 /* detail page additions */
 .detail.narrow { max-width: 640px }
@@ -326,48 +323,246 @@ input[type=text], input[type=password], input[type=email], input[type=number] {
 .more-filters .chip { justify-self: start }
 
 /* =========================================================================
- * Calendar (F12 expected failures, F13 private appointments) - from the GUI draft
+ * Warnings: coloured backgrounds so they stand out from normal content
+ *   red   = act now (critical battery, rejected message)
+ *   amber = attention (invalid values, date warnings in forms)
+ * The tints are mixed from the status colours, so they follow dark mode.
  * ========================================================================= */
-.cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start }
+:root {
+  --red-bg: color-mix(in srgb, var(--red) 13%, var(--surface));
+  --red-line: color-mix(in srgb, var(--red) 40%, transparent);
+  --amber-bg: color-mix(in srgb, var(--amber) 18%, var(--surface));
+  --amber-line: color-mix(in srgb, var(--amber) 50%, transparent);
+  --accent-bg: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+/* strips below the header (App.jsx -> Alerts) */
+.alerts { display: grid }
+.al { display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-size: 14px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line) }
+.al .ic { flex: none }
+.al-text { flex: 1; min-width: 0 }
+.al-names { margin-left: 10px; color: var(--ink-soft) }
+.al-go { font-weight: 700; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px }
+.al-krit { background: var(--red-bg); border-bottom-color: var(--red-line); box-shadow: inset 5px 0 0 var(--red) }
+.al-krit .ic { color: var(--red) }
+.al-warn { background: var(--amber-bg); border-bottom-color: var(--amber-line); box-shadow: inset 5px 0 0 var(--amber) }
+.al-warn .ic { color: color-mix(in srgb, var(--amber) 75%, var(--ink)) }
+a.al:hover { background: color-mix(in srgb, var(--red) 19%, var(--surface)) }
+/* boxes inside pages */
+.alert { background: var(--red-bg); border-color: var(--red-line); border-left: 5px solid var(--red) }
+.notice { margin: 0; padding: 9px 12px 8px; border-radius: 8px; font-size: 14px; font-weight: 600 }
+.notice.warn { background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--ink) }
+.card.s-krit[aria-label="Akkustand"] { background: var(--red-bg); border-color: var(--red-line) }
+
+/* =========================================================================
+ * "Route" buttons (components/RouteLink.jsx) -> Google Maps
+ * ========================================================================= */
+.btn-s { gap: 6px; text-decoration: none; color: var(--ink) }
+.route { text-decoration: none }
+.btn-s.route { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)) }
+.route-ic { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface); color: var(--accent) }
+.route-ic:hover, .btn-s.route:hover { border-color: var(--accent) }
+.row-wrap { display: flex; align-items: center; gap: 2px }
+.row-wrap .row { flex: 1; min-width: 0 }
+.popup-actions { margin-top: 8px }
+.d-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px }
+.d-actions:empty { display: none }
+
+/* header details */
+nav a { display: inline-flex; align-items: center; gap: 8px }
+.top nav .ic { display: none }           /* tab icons: phones only */
+.refresh .ic { flex: none }
+.view-switch { display: none }           /* list/map switch: phones only */
+.plan { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px }
+input[type=date], input[type=time] { width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); min-width: 0 }
+
+/* =========================================================================
+ * Calendar (pages/Calendar.jsx): week view (default), month view (wide screens)
+ * ========================================================================= */
+.appt { --c: var(--accent) }
+.cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start }
+.cal-wrap.view-week { grid-template-columns: minmax(0, 1fr) }   /* the week gets the full width */
 .cal-side { display: grid; gap: 16px }
-.cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap }
-.cal-head h2 { margin: 0 auto 0 0; font-size: 22px; font-weight: 800; letter-spacing: -.015em }
+.view-week .soon { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0 16px }
+.cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap }
+.cal-head h2 { display: grid; margin: 0 auto 0 0; font-size: 20px; font-weight: 800; letter-spacing: -.015em }
+.cal-head h2 small { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted) }
+.cal-nav { display: flex; gap: 6px }
+.cal-nav .btn-s { min-width: 36px; justify-content: center; padding: 7px 10px 6px }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; font-size: 13px; color: var(--muted) }
+.cal-legend span { display: inline-flex; align-items: center; gap: 6px }
+.week-empty { margin: 12px 0 0 }
+
+/* "Jetzt fällig" box */
+.due-now { margin-bottom: 16px; background: var(--red-bg); border-color: var(--red-line); box-shadow: inset 5px 0 0 var(--red) }
+.due-list { list-style: none; margin: 0; padding: 0 }
+.due-list li { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--red-line) }
+.due-list li:first-child { border-top: 0; padding-top: 0 }
+.due-list li:last-child { padding-bottom: 0 }
+.due-list .meta { white-space: normal }
+
+/* week: seven columns on wide screens */
+.wk-strip { display: none }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
+.wday { display: flex; flex-direction: column; min-width: 0; min-height: 280px; background: var(--surface); border-left: 1px solid var(--line) }
+.wday:first-child { border-left: 0 }
+.wday.past { background: var(--bg) }
+.wday.today { background: var(--accent-bg) }
+.wday-head { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; padding: 8px 8px 7px; border-bottom: 1px solid var(--line); font-size: 13px }
+.wday-name { font-weight: 800 }
+.wday-date { color: var(--muted) }
+.today-tag { display: none; padding: 1px 8px 0; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 700 }
+/* wide screens: no room for the word "Heute" in a column -> accent bar + accent day name */
+.wday.today .wday-head { box-shadow: inset 0 3px 0 var(--accent) }
+.wday.today .wday-name { color: var(--accent) }
+.wday-head .add { margin-left: auto; min-width: 26px; justify-content: center; padding: 2px 7px 1px; font-size: 14px; color: var(--accent) }
+.add-label { display: none }                             /* wide screens: just "+", the column is narrow */
+.wday-free { margin: 0; padding: 10px 8px; font-size: 13px; color: var(--muted) }
+
+/* one entry: coloured card with everything written out */
+.entries { list-style: none; margin: 0; padding: 8px; display: grid; gap: 8px; align-content: start }
+.card > .entries { padding: 0 }
+.entry { display: grid; gap: 3px; min-width: 0; padding: 8px 9px 8px 12px; border-radius: 7px; font-size: 13px; overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--c) 11%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  box-shadow: inset 4px 0 0 var(--c) }
+.entry-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 8px }
+.tag { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: color-mix(in srgb, var(--c) 65%, var(--ink)) }
+.entry-name { font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none; overflow-wrap: anywhere }
+a.entry-name:hover { text-decoration: underline }
+.entry .meta { white-space: normal; overflow: visible }
+.entry-actions .btn-s { white-space: nowrap }
+.meta.ok { color: var(--green); font-weight: 700 }
+.meta.note { font-style: italic }
+.entry-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px }
+.plan-btn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)) }
+.plan-btn:hover { border-color: var(--accent) }
+
+/* month grid */
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 6px; overflow: hidden }
 .cal-dow { padding: 6px 8px 5px; font-size: 12px; font-weight: 700; color: var(--muted); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg) }
-.cal-day { min-height: 104px; min-width: 0; padding: 6px; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 3px; align-items: stretch }
+.cal-day { display: flex; flex-direction: column; gap: 3px; align-items: stretch; min-height: 96px; min-width: 0; padding: 6px; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); text-align: left; cursor: pointer }
 .cal-day:hover { background: var(--hover) }
 .cal-day.out { background: var(--bg) }
 .cal-day.out .num { color: var(--muted); font-weight: 600 }
+.cal-day.past .ev { opacity: .6 }
 .cal-day.today .num { background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: 1px 7px 0 }
 .cal-day.sel { box-shadow: inset 0 0 0 2px var(--ink) }
 .num { font-size: 13px; font-weight: 700; align-self: flex-start }
 .ev { display: block; font-size: 12px; line-height: 1.35; padding: 2px 6px 1px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--c) 15%, transparent); border-left: 3px solid var(--c) }
-.appt { --c: var(--accent) }
 .ev-more { font-size: 12px; color: var(--muted); padding-left: 2px }
-.dots { display: none; gap: 3px; flex-wrap: wrap }
-.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; font-size: 13px; color: var(--muted) }
-.cal-legend span { display: inline-flex; align-items: center; gap: 6px }
-.agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px }
-.ag { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line) }
-.ag:first-child { border-top: 0; padding-top: 0 }
-.ag .dot { margin-top: 5px }
-.ag > div { display: grid; gap: 2px; min-width: 0 }
-.ag a { font-weight: 700; text-decoration: none }
-.ag a:hover { text-decoration: underline }
-.ag .meta { white-space: normal }
-.ag .reset { margin-top: 4px }
+.dots { display: flex; gap: 3px; flex-wrap: wrap }
+
+/* "Als Nächstes fällig" */
 .soon { list-style: none; margin: 0; padding: 0 }
 .soon button { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; width: 100%; border: 0; background: none; padding: 8px 6px; border-radius: 7px; text-align: left; cursor: pointer }
 .soon button:hover { background: var(--hover) }
 .soon .when { font-size: 13px; font-weight: 700; white-space: nowrap }
 .soon .name, .soon .meta { white-space: normal }
-.plan { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px }
-input[type=date], input[type=time] { width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); min-width: 0 }
+
 @media (max-width: 1060px) { .cal-wrap { grid-template-columns: 1fr } }
-@media (max-width: 640px) {
-  .cal-day { min-height: 58px; padding: 4px }
-  .cal-dow { padding: 6px 4px 5px }
-  .ev, .ev-more { display: none }
-  .dots { display: flex }
-  .dots .dot { width: 7px; height: 7px }
+
+/* Week on phones AND tablets: seven columns would be too narrow, so the days are
+ * stacked, with a strip Mo-So on top that stays visible and jumps to a day. */
+@media (max-width: 1060px) {
+  .add-label { display: inline }
+  .today-tag { display: inline-block }
+  .wday.today .wday-head { box-shadow: none }
+  .wk-strip { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;
+    margin: 0 -4px 8px; padding: 6px 4px 8px; background: var(--surface) }
+  .wk-chip { display: grid; justify-items: center; align-content: start; gap: 1px; min-height: 60px; padding: 6px 0 5px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 11px; cursor: pointer }
+  .wk-chip b { font-size: 17px; line-height: 1.15; color: var(--ink) }
+  .wk-chip.today { border-color: var(--accent) }
+  .wk-chip.today b { color: var(--accent) }
+  .wk-chip.sel { background: var(--ink); border-color: var(--ink); color: var(--surface) }
+  .wk-chip.sel b { color: var(--surface) }
+  .wk-chip .dots { justify-content: center; min-height: 7px }
+  .wk-chip .dot { width: 6px; height: 6px }
+
+  .week { grid-template-columns: 1fr; gap: 8px; border: 0; border-radius: 0; overflow: visible }
+  .wday, .wday:first-child { min-height: 0; border: 1px solid var(--line); border-radius: 10px; scroll-margin-top: 84px }
+  .wday.sel { border-color: var(--ink-soft) }
+  .wday-head { padding: 10px 12px 9px; font-size: 15px }
+  .wday-head .add { padding: 6px 10px 5px; font-size: 13px }
+  .wday.free .wday-head { border-bottom: 0 }
+  .wday.free .wday-name { font-weight: 600; color: var(--muted) }
+  .wday.free .wday-free { display: none }               /* empty days stay one short line */
+  .entries { padding: 10px }
+  .entry { padding: 10px 12px 10px 14px; font-size: 14px }
+  .entry-name { font-size: 16px }
+  .entry-actions { margin-top: 6px }
+  .entry-actions .btn-s { flex: 1; justify-content: center; padding: 10px 10px 9px }
+}
+
+/* =========================================================================
+ * PHONE LAYOUT (service technicians mostly use a phone)
+ *  - header in ONE row: logo, time of data, refresh, avatar
+ *  - navigation as a tab bar at the BOTTOM (thumb reach)
+ *  - overview: the list first; the map via the switch "Liste | Karte"
+ *  - bigger touch targets
+ * ========================================================================= */
+@media (max-width: 860px) {
+  .wide-only { display: none }
+  .top { flex-wrap: nowrap; gap: 8px; padding: 8px 12px }
+  .brand { margin-right: auto; font-size: 17px }
+  .stamp { width: auto; margin: 0; gap: 8px; font-size: 12px; white-space: nowrap }
+  .stamp .err { white-space: normal; font-size: 12px }
+  .refresh { width: 38px; height: 38px; padding: 0; justify-content: center; border-radius: 50% }
+  .who { padding: 0 }
+
+  .top nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1200; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)); background: var(--surface); border-top: 1px solid var(--line) }
+  .top nav a { flex-direction: column; justify-content: center; gap: 2px; padding: 6px 4px 4px; font-size: 12px }
+  .top nav .ic { display: block }
+  .top nav a.active { background: none; color: var(--accent) }
+  .top nav a:only-child { display: none }                /* admin: a single page needs no tab */
+  .top nav:has(a:only-child) { display: none }
+  main { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) }
+  .scroll { overflow: visible }                           /* let <main> scroll, so sticky parts work */
+
+  .al { padding: 10px 12px; gap: 10px }
+  .al-names { display: block; margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+
+  /* overview: list OR map */
+  .view-switch { display: flex }
+  .overview .ov-map { display: none }
+  .overview.show-map .ov-map { display: block; order: 0; height: calc(100dvh - 300px); min-height: 320px }
+  .overview.show-map .list, .overview.show-map .list-head, .overview.show-map .empty { display: none }
+  .list { padding: 0 6px 16px }
+  .row { padding: 12px 8px }
+  .route-ic { width: 42px; height: 42px }
+
+  /* touch targets */
+  .btn-s { padding: 8px 12px 7px; font-size: 14px }
+  .seg button { padding: 9px 6px }
+  .chip { padding: 8px 14px 7px }
+
+  /* detail page */
+  .detail, .page { padding: 14px 12px 24px }
+  .d-head { margin: 10px 0 14px }
+  .d-head h1 { font-size: 26px }
+  .d-actions .btn { flex: 1; padding: 12px 14px; font-size: 15px }
+  .plan .btn { width: 100% }
+  .card-tools { width: 100% }
+  .card-tools .seg { flex: 1 }
+  .seg.small button { flex: 1; padding: 9px 6px }
+  .chart { height: 230px }
+}
+
+/* calendar on phones: week strip + days stacked */
+@media (max-width: 760px) {
+  .cal-head h2 { flex: 1 1 100%; font-size: 18px }
+  .cal-nav { margin-right: auto }
+  .cal-nav .btn-s { min-width: 44px; padding: 9px 12px 8px }
+  .cal-main { padding: 14px 12px }
+
+  .due-list li { grid-template-columns: 84px minmax(0, 1fr) }
+  .due-list .entry-actions { grid-column: 1 / -1 }
+  .soon button { grid-template-columns: 84px 1fr auto; padding: 10px 2px }
+
+  /* the appointment dialog slides up from the bottom */
+  .overlay.sheet { place-items: end stretch; padding: 0 }
+  .sheet .dialog { width: 100%; max-height: 92dvh; overflow: auto; border-radius: 16px 16px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) }
+  .sheet .row-btns .btn { flex: 1; padding: 12px }
+  input[type=date], input[type=time], input[type=text], input[type=password], input[type=email], input[type=search], select { font-size: 16px }  /* no zoom-in on iOS */
 }

@@ -58,13 +58,31 @@ export default function App() {
 }
 
 /* --- header with user menu -------------------------------------------------------- */
+/* small inline icons (take the text colour) for the phone tab bar, the refresh button and warnings */
+const Icon = ({ d, size = 20 }) => (
+  <svg className="ic" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+)
+const ICONS = {
+  devices: 'M7 7h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Zm14 4v2M9 10v4m3-4v4',
+  calendar: 'M7 3v4m10-4v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z',
+  users: 'M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1m6.5-9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm11.5 9v-1a4 4 0 0 0-3-3.9M15 3.1a3.5 3.5 0 0 1 0 6.8',
+  refresh: 'M20 11a8 8 0 0 0-14.9-3M4 4v4h4m-4 5a8 8 0 0 0 14.9 3M20 20v-4h-4',
+  warn: 'M12 9v4m0 4h.01M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z',
+}
+
+/*
+ * Header bar. On phones (see "Phone layout" in styles.css) it shrinks to one
+ * row (logo + refresh + avatar) and the navigation moves to a tab bar at the
+ * BOTTOM of the screen, where the thumb reaches it.
+ */
 function Header({ me, onLogout, children, nav }) {
   const [menu, setMenu] = useState(false)
   const [pwd, setPwd] = useState(false)
   const [saved, setSaved] = useState(false)
   return (
     <header className="top">
-      <NavLink className="brand" to="/">
+      <NavLink className="brand" to="/" aria-label="BatteryWatch, zur Startseite">
         <span className="lamp" aria-hidden="true"><i /><i /><i /></span>BatteryWatch
       </NavLink>
       <nav aria-label="Hauptnavigation">{nav}</nav>
@@ -100,7 +118,8 @@ const initials = (name) => name.split(/\s+/).filter(Boolean).map((s) => s[0]).sl
 function AdminShell({ me, onLogout }) {
   return (
     <>
-      <Header me={me} onLogout={onLogout} nav={<NavLink to="/" end>Nutzerverwaltung</NavLink>} />
+      <Header me={me} onLogout={onLogout}
+        nav={<NavLink to="/" end><Icon d={ICONS.users} /><span>Nutzerverwaltung</span></NavLink>} />
       <main>
         <Routes>
           <Route path="/" element={<UserAdmin me={me} />} />
@@ -124,13 +143,14 @@ function DeviceShell({ me, onLogout }) {
     <>
       <Header me={me} onLogout={onLogout}
         nav={<>
-          <NavLink to="/" end>{me.role === 'techniker' ? 'Meine Geräte' : 'Übersicht'}</NavLink>
-          <NavLink to="/kalender">Kalender</NavLink>
+          <NavLink to="/" end><Icon d={ICONS.devices} /><span>{me.role === 'techniker' ? 'Meine Geräte' : 'Übersicht'}</span></NavLink>
+          <NavLink to="/kalender"><Icon d={ICONS.calendar} /><span>Kalender</span></NavLink>
         </>}>
         {devices.error && <span className="err">Backend nicht erreichbar: {devices.error.message}</span>}
-        <span>Stand {time(devices.updatedAt)} · automatisch alle 5 Min.</span>
-        <button type="button" className="btn-s" onClick={devices.refresh} disabled={devices.loading}>
-          {devices.loading ? 'Lädt …' : 'Aktualisieren'}
+        <span className="stamp-text">Stand {time(devices.updatedAt)}<span className="wide-only"> · automatisch alle 5 Min.</span></span>
+        <button type="button" className="btn-s refresh" onClick={devices.refresh} disabled={devices.loading}
+          title="Daten jetzt aktualisieren" aria-label="Daten jetzt aktualisieren">
+          <Icon d={ICONS.refresh} size={16} /><span className="wide-only">{devices.loading ? 'Lädt …' : 'Aktualisieren'}</span>
         </button>
       </Header>
       <Alerts devices={devices.data} me={me} />
@@ -147,28 +167,38 @@ function DeviceShell({ me, onLogout }) {
   )
 }
 
-/* --- warning banner (F02 / issue #7, in-app part) --------------------------------------- */
+/* --- warning banner (F02 / issue #7, in-app part) ---------------------------------------
+ * Coloured strips right below the header, so they can't be overlooked:
+ *   red    devices with a critical battery -> the whole strip is a link to them
+ *   amber  devices sending invalid values (e.g. sensor read error)
+ */
 function Alerts({ devices, me }) {
   if (!devices) return null
   const critical = devices.filter((d) => d.status === 'krit')
   const broken = devices.filter((d) => d.last_message_error)
   if (!critical.length && !broken.length) return null
-  const names = (list) => list.slice(0, 3).map((d) => d.name).join(', ') + (list.length > 3 ? ' …' : '')
+  const names = (list) => list.slice(0, 3).map((d) => d.name).join(', ') + (list.length > 3 ? ` und ${list.length - 3} weitere` : '')
   return (
     <div className="alerts" role="status">
       {critical.length > 0 && (
-        <span className="s-krit"><i className="dot" />
-          <span>
+        <Link className="al al-krit" to="/?status=krit">
+          <Icon d={ICONS.warn} />
+          <span className="al-text">
             <b>{critical.length} {critical.length === 1 ? 'Gerät' : 'Geräte'} mit kritischem Akkustand</b>
-            {me.role === 'techniker' && ' (Ihnen zugeordnet)'}: {names(critical)}
+            {me.role === 'techniker' && <span className="wide-only"> (Ihnen zugeordnet)</span>}
+            <span className="al-names">{names(critical)}</span>
           </span>
-          <Link to="/?status=krit">anzeigen</Link>
-        </span>
+          <span className="al-go">Anzeigen ›</span>
+        </Link>
       )}
       {broken.length > 0 && (
-        <span className="s-unbekannt"><i className="dot" />
-          {broken.length} {broken.length === 1 ? 'Gerät sendet' : 'Geräte senden'} ungültige Werte: {names(broken)}
-        </span>
+        <div className="al al-warn">
+          <Icon d={ICONS.warn} />
+          <span className="al-text">
+            <b>{broken.length} {broken.length === 1 ? 'Gerät sendet' : 'Geräte senden'} ungültige Werte</b>
+            <span className="al-names">{names(broken)}</span>
+          </span>
+        </div>
       )}
     </div>
   )

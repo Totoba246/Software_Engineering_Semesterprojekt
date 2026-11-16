@@ -10,21 +10,39 @@ import { useEffect, useMemo, useRef } from 'react'
 import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { Link } from 'react-router-dom'
 import { pct } from '../format.js'
+import RouteLink from './RouteLink.jsx'
 
 const GERMANY = [[47.3, 5.9], [55.1, 15.0]]
 
 // Fit the map to the devices once (and again when the set of devices changes),
 // but not on every poll, so the user's zoom is kept.
+// On a phone the map can be hidden (list/map switch): Leaflet then has size 0 and
+// can't fit anything. So we watch the map's size, tell Leaflet about changes
+// (invalidateSize) and do the fit as soon as the map is really visible.
 function FitToDevices({ devices }) {
   const map = useMap()
   const key = devices.map((d) => d.device_id).sort().join('|')
   const fitted = useRef(null)
+  const latest = useRef({ key, devices })
+  latest.current = { key, devices }
+
+  const fitIfNeeded = () => {
+    const { key: k, devices: list } = latest.current
+    if (!list.length || fitted.current === k || map.getSize().x === 0) return
+    fitted.current = k
+    map.fitBounds(list.map((d) => [d.position.latitude, d.position.longitude]), { padding: [50, 50], maxZoom: 14 })
+  }
+
+  useEffect(fitIfNeeded, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!devices.length || fitted.current === key) return
-    fitted.current = key
-    const pts = devices.map((d) => [d.position.latitude, d.position.longitude])
-    map.fitBounds(pts, { padding: [50, 50], maxZoom: 14 })
-  }, [key, devices, map])
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize()
+      fitIfNeeded()
+    })
+    observer.observe(map.getContainer())
+    return () => observer.disconnect()
+  }, [map]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
@@ -59,7 +77,8 @@ export default function DeviceMap({ devices, selectedId, onHover, interactive = 
           {interactive && (
             <Popup>
               <Link to={`/geraete/${encodeURIComponent(d.device_id)}`}>{d.name}</Link>
-              <br />Akku {pct(d.soc_percent)}
+              <br />Akku {pct(d.soc_percent)}{d.location ? ` · ${d.location}` : ''}
+              <div className="popup-actions"><RouteLink device={d} /></div>
             </Popup>
           )}
         </CircleMarker>

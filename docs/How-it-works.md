@@ -184,6 +184,21 @@ The **server** checks this for every request (`backend/batterywatch/api/deps.py`
 page: a technician asking for someone else's device gets "403 Kein Zugriff", even with hand-made
 requests. Passwords are stored only as Argon2 hashes (`security.py`).
 
+### On a phone, and "Route"
+
+Service technicians mostly use a phone, so below about 860 px width the page rearranges itself
+(all of that is CSS at the end of `frontend/src/styles.css`, nothing on the server changes):
+the navigation moves to the bottom, the overview shows either the list **or** the map (switch
+"Liste | Karte"), and the calendar is always a week: seven day buttons on top, below them the
+entries of each day written out. Warnings are the coloured strips under the header - red for
+critical batteries, yellow for devices that send invalid values.
+
+Every device with a position has a **"Route"** button (list, map popup, detail page, calendar
+entry). It is only a link, `https://www.google.com/maps/dir/?api=1&destination=<lat>,<lon>`
+(`frontend/src/components/RouteLink.jsx`): on a phone it opens the Google Maps app, on a computer
+a new tab. No API key, and nothing is sent to Google before somebody clicks. A device without GPS
+but with a place name gets "Ort suchen" instead (a search for that place, not an exact position).
+
 ---
 
 ## 6. Where is what (folders)
