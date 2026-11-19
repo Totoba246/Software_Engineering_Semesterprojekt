@@ -248,6 +248,9 @@ input[type=text], input[type=password], input[type=email], input[type=number] {
 .who:hover { background: var(--hover) }
 .who b { display: block; font-size: 13px; line-height: 1.2 }
 .who small { display: block; color: var(--muted); font-size: 12px; line-height: 1.2 }
+.menu-who { display: none; margin: 0; padding: 8px 12px 9px; border-bottom: 1px solid var(--line); white-space: nowrap }
+.menu-who b { display: block; font-size: 13px }
+.menu-who small { display: block; color: var(--muted); font-size: 12px }
 .av { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--bg);
   border: 1px solid var(--line); font-size: 12px; font-weight: 800; color: var(--ink-soft); flex: none }
 .float { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--float-shadow) }
@@ -491,6 +494,25 @@ a.entry-name:hover { text-decoration: underline }
   .entry-name { font-size: 16px }
   .entry-actions { margin-top: 6px }
   .entry-actions .btn-s { flex: 1; justify-content: center; padding: 10px 10px 9px }
+}
+
+/* =========================================================================
+ * MEDIUM WIDTH (phones in landscape, tablets, small laptops: 861-1180 px)
+ * The header must stay ONE row: shorter texts first, then the avatar
+ * without the name. (Below 861 px the phone layout further down takes over.)
+ * ========================================================================= */
+@media (max-width: 1180px) {
+  .top { flex-wrap: nowrap; gap: 16px; padding: 8px 16px }
+  .top nav { flex-wrap: nowrap }
+  .top nav a { white-space: nowrap; padding: 6px 10px }
+  .wide-only { display: none }
+  .stamp { white-space: nowrap; gap: 8px }
+  .refresh { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50% }
+}
+@media (max-width: 1000px) {
+  .who { padding: 0 }
+  .who span:last-child { display: none }   /* name + role: shown at the top of the menu instead */
+  .menu-who { display: block }
 }
 
 /* =========================================================================

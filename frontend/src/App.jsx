@@ -91,12 +91,15 @@ function Header({ me, onLogout, children, nav }) {
       <nav aria-label="Hauptnavigation">{nav}</nav>
       <div className="stamp">{children}</div>
       <div className="usermenu">
-        <button type="button" className="who" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        <button type="button" className="who" aria-expanded={menu} onClick={() => setMenu(!menu)}
+          title={`${me.display_name} (${ROLES[me.role]})`}>
           <span className="av">{initials(me.display_name)}</span>
           <span><b>{me.display_name}</b><small>{ROLES[me.role]}</small></span>
         </button>
         {menu && (
           <div className="menu float" role="menu">
+            {/* on narrow screens the header shows only the avatar - the name is repeated here */}
+            <p className="menu-who"><b>{me.display_name}</b><small>{ROLES[me.role]}</small></p>
             <button type="button" role="menuitem" onClick={() => { setPwd(true); setMenu(false) }}>Passwort ändern</button>
             <button type="button" role="menuitem" onClick={onLogout}>Abmelden</button>
           </div>
