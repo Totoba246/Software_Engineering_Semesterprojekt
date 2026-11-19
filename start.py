@@ -27,7 +27,7 @@ USE (in a terminal, in the project folder, e.g. the VS Code terminal)
 
 LOGIN
     The very first start asks for the name + password of the first ADMIN.
-    The admin then creates all other accounts on the website (Nutzerverwaltung).
+    The admin then creates all other accounts on the website (Verwaltung -> Nutzer).
     Demo accounts (test mode, `python start.py demo`): chef, mitarbeiter,
     techniker1, techniker2 - password demo1234.
 
@@ -173,7 +173,7 @@ def ensure_admin() -> None:
     if result.stdout.strip() != "0":
         return
     say("Es gibt noch kein Konto - lege den ersten ADMIN an")
-    print("Der Admin legt danach auf der Webseite (Nutzerverwaltung) alle weiteren Konten an.")
+    print("Der Admin legt danach auf der Webseite (Verwaltung -> Nutzer) alle weiteren Konten an.")
     username = ask("Benutzername für den Admin", "admin").lower()
     password = ask_new_password("Passwort für den Admin")
     if manage("create-user", username, "--role", "admin", "--name", "Administrator", password=password).returncode:
@@ -260,7 +260,7 @@ def cmd_demo() -> None:
     check_docker()
     say("Lege Demo-Konten und Demo-Stammdaten an")
     manage("seed-demo")
-    print("Anmelden z. B. als 'chef', 'mitarbeiter' oder 'techniker1' mit Passwort demo1234.")
+    print("Anmelden z. B. als 'chef' (Admin), 'mitarbeiter' oder 'techniker1' mit Passwort demo1234.")
 
 
 def cmd_reset_password(username: str) -> None:

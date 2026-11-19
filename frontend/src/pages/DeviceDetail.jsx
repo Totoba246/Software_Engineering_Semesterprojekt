@@ -4,28 +4,31 @@
  * Loads its own data from the API, every 5 minutes:
  *   GET /api/devices/<id>             -> big battery %, facts on the right
  *   GET /api/devices/<id>/history     -> the chart (HistoryCard)
- *   GET /api/devices/<id>/messages    -> list of the last MQTT messages (MessagesCard)
+ *   GET /api/devices/<id>/messages    -> list of the last MQTT messages (MessagesCard,
+ *                                        Admin/Mitarbeiter only: diagnosis for the office)
  * If the newest message was rejected (e.g. voltage_mV = 5368709120), a red
  * box at the top explains why.
  *
- * Firmenchef/Mitarbeiter also see the assigned technician and can edit the
+ * Admin/Mitarbeiter also see the assigned technician and can edit the
  * master data, assign a technician or delete the device (MasterDataCard).
  * A Servicetechniker opening a device that isn't theirs gets "Kein Zugriff"
- * (the server answers 403). For their own devices they see their next private
- * replacement appointment and a button "Wechsel einplanen" (-> calendar, F13).
+ * (the server answers 403). For their own devices they see ALL their upcoming
+ * replacement appointments for it, can change and delete them, and enter one
+ * ("Wechsel einplanen") or another one ("Weiteren Termin eintragen") (F13).
  * The predicted dates link to the calendar (F12).
  */
 
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, isManagement } from '../api.js'
+import { AppointmentDialog, appointmentToForm } from '../components/AppointmentForm.jsx'
 import { BatteryIcon } from '../components/Battery.jsx'
 import DeviceForm from '../components/DeviceForm.jsx'
 import DeviceMap from '../components/DeviceMap.jsx'
 import RouteLink from '../components/RouteLink.jsx'
 import HistoryChart, { METRICS, NIGHT_FROM, NIGHT_TO } from '../components/HistoryChart.jsx'
 import { ago, dateTime, num, STATUS_LABEL } from '../format.js'
-import { shortDay } from './Calendar.jsx'
+import { hhmm, shortDay, suggestedDay } from '../dates.js'
 import { usePolling } from '../usePolling.js'
 
 const RANGES = [
@@ -53,17 +56,75 @@ function statusText(d, rules) {
   }
 }
 
-/* --- next own replacement appointment (Servicetechniker, F13) ---------------------------- */
-function PlanBox({ device }) {
-  const { data } = usePolling(api.appointments, [device.device_id])
-  const now = Date.now()
-  const next = (data ?? []).filter((a) => a.device_id === device.device_id && new Date(a.starts_at).getTime() > now - 3600e3)[0]
-  const time = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+/* --- own replacement appointments for this device (Servicetechniker, F13) -------------------- */
+function AppointmentsCard({ device: d }) {
+  const { data, error, refresh } = usePolling(api.appointments, [d.device_id])
+  const [dialog, setDialog] = useState(null) // form values while the dialog is open
+  const [confirm, setConfirm] = useState(null) // id of the appointment to delete
+  const [msg, setMsg] = useState(null)
+  // upcoming ones (and the one that started within the last hour), soonest first
+  const from = Date.now() - 3600e3
+  const mine = (data ?? [])
+    .filter((a) => a.device_id === d.device_id && new Date(a.starts_at).getTime() > from)
+    .sort((x, y) => new Date(x.starts_at) - new Date(y.starts_at))
+
+  async function remove(a) {
+    try {
+      await api.deleteAppointment(a.id)
+      setMsg(`Termin am ${shortDay(a.starts_at)} gelöscht.`)
+      setConfirm(null)
+      refresh()
+    } catch (err) {
+      setMsg(`Löschen fehlgeschlagen: ${err.message}`)
+    }
+  }
+  const saved = (a, changed) => {
+    setDialog(null)
+    setMsg(`Termin am ${shortDay(a.starts_at)} um ${hhmm(a.starts_at)} Uhr ${changed ? 'geändert' : 'gespeichert'}.`)
+    refresh()
+  }
+
   return (
-    <div className="plan">
-      <span>{next ? <>Ihr Termin: <b>{shortDay(next.starts_at)}, {time(next.starts_at)} Uhr</b></> : 'Noch kein Wechseltermin eingetragen.'}</span>
-      <Link className="btn" to={`/kalender?g=${encodeURIComponent(device.device_id)}`}>Wechsel einplanen</Link>
-    </div>
+    <section className="card span2 appts" aria-label="Ihre Wechseltermine">
+      <div className="card-head">
+        <h2>Ihre Wechseltermine</h2>
+        <button type="button" className={mine.length ? 'btn-s' : 'btn'}
+          onClick={() => { setMsg(null); setDialog({ device: d.device_id, date: suggestedDay(d), time: '08:00', note: '' }) }}>
+          {mine.length ? '+ Weiteren Termin eintragen' : 'Wechsel einplanen'}
+        </button>
+      </div>
+      {msg && <p className="msg" role="status">{msg}</p>}
+      {error && <p className="hint warn">Termine konnten nicht geladen werden: {error.message}</p>}
+      {data && !mine.length && <p className="hint">Für dieses Gerät ist noch kein Wechseltermin eingetragen.</p>}
+      {mine.length > 0 && (
+        <ul className="appt-list">
+          {mine.map((a) => (
+            <li key={a.id}>
+              <span className="appt-when"><b>{shortDay(a.starts_at)}</b> {hhmm(a.starts_at)} Uhr</span>
+              <span className="appt-note">{a.note ? `„${a.note}“` : <span className="muted">ohne Notiz</span>}</span>
+              <span className="entry-actions">
+                {confirm === a.id ? (
+                  <>
+                    <button type="button" className="btn-s danger-solid" onClick={() => remove(a)}>Wirklich löschen</button>
+                    <button type="button" className="btn-s" onClick={() => setConfirm(null)}>Abbrechen</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn-s" onClick={() => { setMsg(null); setDialog(appointmentToForm(a)) }}>Bearbeiten</button>
+                    <button type="button" className="btn-s danger" onClick={() => setConfirm(a.id)}>Löschen</button>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="hint">Termine sind privat und nur für Sie sichtbar. Alle Termine: <Link to="/kalender">Kalender</Link>.</p>
+      {dialog && (
+        <AppointmentDialog devices={[d]} form={dialog} setForm={setDialog} onSaved={saved} onCancel={() => setDialog(null)}
+          title={dialog.id == null && mine.length ? 'Weiteren Termin eintragen' : undefined} />
+      )}
+    </section>
   )
 }
 
@@ -239,7 +300,7 @@ export default function DeviceDetail({ rules, me, onChanged }) {
             <span>{d.last_message_error}</span>
             <span className="hint">
               Ungültige Werte werden nicht gespeichert. Häufige Ursache: Messwert nicht plausibel (z. B. kein Akku
-              angeschlossen oder Sensor-Lesefehler). Details unten unter „Letzte MQTT-Nachrichten“.
+              angeschlossen oder Sensor-Lesefehler).{isManagement(me) && ' Details unten unter „Letzte MQTT-Nachrichten“.'}
             </span>
           </div>
         )}
@@ -255,7 +316,6 @@ export default function DeviceDetail({ rules, me, onChanged }) {
               Akkuspannung {num(d.battery_voltage_v, 2)} V (Mittel der letzten {rules?.smoothing_minutes ?? 60} Min.
               vor der letzten Meldung, inkl. Shunt-Korrektur U<sub>bat</sub> = {num(rules?.shunt_resistance_ohm ?? 0.002, 3)} Ω · I + U<sub>mess</sub>)
             </p>}
-            {me.role === 'techniker' && <PlanBox device={d} />}
           </section>
 
           <section className="card" aria-label="Gerätedaten">
@@ -297,13 +357,16 @@ export default function DeviceDetail({ rules, me, onChanged }) {
             </dl>
           </section>
 
+          {me.role === 'techniker' && <AppointmentsCard device={d} />}
+
           <MasterDataCard device={d} me={me}
             onSaved={() => { refresh(); onChanged?.() }}
             onDeleted={() => { onChanged?.(); navigate('/') }} />
 
           <HistoryCard device={d} rules={rules} />
 
-          <MessagesCard device={d} />
+          {/* raw MQTT messages: office diagnosis, not for Servicetechniker (the server says 403 too) */}
+          {isManagement(me) && <MessagesCard device={d} />}
 
           <section className="card span2" aria-label="Standort">
             <div className="card-head">

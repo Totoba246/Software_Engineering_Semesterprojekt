@@ -3,9 +3,10 @@ and master data / technician assignment (F07, F09). Every device comes with the
 simple prediction (F04), which the calendar (F12) shows.
 
 Who may do what (use-case diagram):
-  chef, mitarbeiter  see all devices; add, edit, delete devices; assign technicians
-  techniker          sees ONLY the devices assigned to them (others: 403)
-  admin              no device access (user management only)
+  admin, mitarbeiter  see all devices; add, edit, delete devices; assign technicians;
+                      see the raw MQTT messages of a device
+  techniker           sees ONLY the devices assigned to them (others: 403),
+                      no raw MQTT messages (403)
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from .models import (
 router = APIRouter(prefix="/api", tags=["Geräte"])
 
 # Who may READ device data, and who may CHANGE it
-viewer = require_roles("chef", "mitarbeiter", "techniker")
+viewer = require_roles(*security.VIEWERS)
 manager = require_roles(*security.MANAGEMENT)
 
 # The chart can't draw thousands of points nicely, so measurements are grouped into
@@ -187,13 +188,14 @@ def get_history(
 
 @router.get("/devices/{device_id}/messages", response_model=list[Message])
 def get_messages(device_id: str, limit: int = Query(20, ge=1, le=500), conn=Depends(get_conn),
-                 user=Depends(viewer)):
-    """Newest received MQTT messages of a device, including rejected ones."""
+                 user=Depends(manager)):
+    """Newest received MQTT messages of a device, including rejected ones.
+    Diagnosis for the office only: technicians get 403."""
     _check_access(conn, device_id, user)
     return conn.execute(queries.MESSAGES, {"device_id": device_id, "limit": limit}).fetchall()
 
 
-# --- changing (Firmenchef / Mitarbeiter) ------------------------------------------------
+# --- changing (Admin / Mitarbeiter) -----------------------------------------------------
 @router.get("/technicians", response_model=list[Technician])
 def list_technicians(conn=Depends(get_conn), user=Depends(manager)):
     """Active service technicians, for the "assign technician" dropdown."""
@@ -209,6 +211,8 @@ def _check_technician(conn, technician_id: int | None) -> None:
     if not ok:
         raise HTTPException(status_code=400, detail="Diesen Servicetechniker gibt es nicht (oder er ist gesperrt).")
 
+
+UNKNOWN_CATEGORY = "Diese Kategorie gibt es nicht. Kategorien legt der Admin unter Verwaltung an."
 
 # which DeviceWrite field goes into which database column
 _COLUMNS = {"name": "name", "category": "category", "location": "location", "technician_id": "technician_id"}
@@ -227,6 +231,8 @@ def create_device(body: DeviceCreate, conn=Depends(get_conn), s: Settings = Depe
             (body.device_id, body.name, body.category, body.location, body.technician_id))
     except psycopg.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail=f"Ein Gerät mit der ID {body.device_id} gibt es schon.")
+    except psycopg.errors.ForeignKeyViolation:
+        raise HTTPException(status_code=400, detail=UNKNOWN_CATEGORY)
     return get_device(body.device_id, conn, s, user)
 
 
@@ -240,8 +246,11 @@ def update_device(device_id: str, body: DeviceWrite, conn=Depends(get_conn),
         _check_technician(conn, body.technician_id)
     if fields:
         sets = ", ".join(f"{_COLUMNS[f]} = %({f})s" for f in fields)
-        conn.execute(f"UPDATE devices SET {sets} WHERE device_id = %(device_id)s",
-                     {**body.model_dump(), "device_id": device_id})
+        try:
+            conn.execute(f"UPDATE devices SET {sets} WHERE device_id = %(device_id)s",
+                         {**body.model_dump(), "device_id": device_id})
+        except psycopg.errors.ForeignKeyViolation:
+            raise HTTPException(status_code=400, detail=UNKNOWN_CATEGORY)
     return get_device(device_id, conn, s, user)
 
 

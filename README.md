@@ -27,9 +27,8 @@ Beim Betreiber gibt es mehrere eigenständige Personen/Rollen mit eigenem Login:
 
 |Rolle|Rechte|
 |---|---|
-|👑 **Admin**|Technische Verwaltung: Nutzerkonten anlegen/verwalten, Systemkonfiguration|
-|🏢 **Firmenchef**|Volle Geschäftssicht: alle Geräte & Batteriezustände, Servicetechniker zuordnen, Benachrichtigung bei kritischem Akkustand – gleiche Rechte wie Mitarbeiter|
-|🧑‍💼 **Mitarbeiter**|Volle Geschäftssicht: alle Geräte & Batteriezustände, Servicetechniker zuordnen, Benachrichtigung bei kritischem Akkustand – gleiche Rechte wie Firmenchef|
+|👑 **Admin** (= Firmenchef)|Volle Geschäftssicht wie Mitarbeiter, zusätzlich Verwaltung: Nutzerkonten, Gerätekategorien, Geräte. Die frühere eigene Rolle „Firmenchef“ ist im Admin aufgegangen.|
+|🧑‍💼 **Mitarbeiter**|Volle Geschäftssicht: alle Geräte & Batteriezustände, Geräte verwalten, Servicetechniker zuordnen, Benachrichtigung bei kritischem Akkustand|
 |🔧 **Servicetechniker/in**|Sieht nur die ihm/ihr zugeordneten Geräte|
 
 ### d. Personas
@@ -56,13 +55,13 @@ Beim Betreiber gibt es mehrere eigenständige Personen/Rollen mit eigenem Login:
 | F03 | **Verlaufsanzeige**                   | Darstellung, wie sich der Batteriezustand eines Geräts über die Zeit entwickelt hat                                                          | 🟠 Mittel  |
 | F04 | **Wechselprognose (Prediction)**      | Abschätzung, wann ein Batteriewechsel voraussichtlich nötig wird, auf Basis der Verlaufsdaten                                                | 🟡 Niedrig |
 | F05 | **Kategorisierung/Filter der Geräte** | Gruppierung, Filterung und Sortierung der Geräte, z. B. nach Standort, Gerätetyp oder Akkustand                                              | 🟠 Mittel  |
-| F06 | **Login/Authentifizierung**           | Zugangsschutz für die Anwendung mit den Rollen Admin, Firmenchef, Mitarbeiter und Servicetechniker (siehe 1.c)                               | 🟢 Hoch    |
+| F06 | **Login/Authentifizierung**           | Zugangsschutz für die Anwendung mit den Rollen Admin (= Firmenchef), Mitarbeiter und Servicetechniker (siehe 1.c)                               | 🟢 Hoch    |
 | F07 | **Gerätestammdaten**                  | Anlegen/Pflegen von Metadaten je Gerät (Ort, Typ, Zuordnung zum Betreiber) – Voraussetzung für F05                                           | 🟠 Mittel  |
 | F08 | **Datenaufnahme ab MQTT**             | Entgegennahme, Validierung und Speicherung der auf dem MQTT-Broker veröffentlichten Messnachrichten (Strom, Spannung, GPS, Zeitstempel)      | 🟢 Hoch    |
-| F09 | **Servicetechniker Zuordnung**        | Firmenchef/Mitarbeiter ordnen Servicetechnikern Geräte zu, diese sehen nur die ihnen zugeordneten Geräte                                     | 🟡 Niedrig |
+| F09 | **Servicetechniker Zuordnung**        | Admin/Mitarbeiter ordnen Servicetechnikern Geräte zu, diese sehen nur die ihnen zugeordneten Geräte                                     | 🟡 Niedrig |
 | F10 | **Kartenansicht**                     | Darstellung aller TrafficNodes auf einer Karte; Klick auf einen Node führt zur Detailansicht                                                 | 🟡 Niedrig |
-| F11 | **Detailansicht**                     | Detailseite je Gerät mit Standort auf Karte, Koordinaten/Ort, aktuellem Akkustand und Akkuverlauf; zusätzlich für Firmenchef/Mitarbeiter der zugeordnete Servicetechniker | 🟠 Mittel  |
-| F12 | **Kalender-Ansicht voraussichtlicher Ausfälle** | Darstellung der voraussichtlichen Batterie-Ausfälle (auf Basis von F04) in einer Kalenderansicht; Firmenchef/Mitarbeiter sehen alle Geräte, Servicetechniker nur die ihnen zugeordneten | 🟡 Niedrig |
+| F11 | **Detailansicht**                     | Detailseite je Gerät mit Standort auf Karte, Koordinaten/Ort, aktuellem Akkustand und Akkuverlauf; zusätzlich für Admin/Mitarbeiter der zugeordnete Servicetechniker | 🟠 Mittel  |
+| F12 | **Kalender-Ansicht voraussichtlicher Ausfälle** | Darstellung der voraussichtlichen Batterie-Ausfälle (auf Basis von F04) in einer Kalenderansicht; Admin/Mitarbeiter sehen alle Geräte, Servicetechniker nur die ihnen zugeordneten | 🟡 Niedrig |
 | F13 | **Privater Kalender für Servicetechniker** | Servicetechniker können sich eigene Termine eintragen, wann sie welche Batterie wechseln wollen                                             | 🟡 Niedrig |
 
 *Beim einrichten eines Geräts einmalig festlegen, welche Kategorie
@@ -153,14 +152,14 @@ Details (Tests, Import, Entwicklung): [docs/Entwicklung.md](docs/Entwicklung.md)
 | F03 | Verlaufsanzeige | ✅ 24 Std. / 7 / 30 Tage / gesamt, Akkustand, Spannung, Strom |
 | F04 | Wechselprognose | 🟡 einfache Schätzung „voraussichtlich kritisch/leer“ aus dem 72-Std.-Trend, für jedes Gerät (Detailansicht und Kalender) |
 | F05 | Filter/Sortierung | ✅ Status, Kategorie, Ort, Servicetechniker, Suche, Sortierung |
-| F06 | Login/Rollen | ✅ Admin, Firmenchef, Mitarbeiter, Servicetechniker (ADR-09) |
-| F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen; Name, Kategorie, Ort (Position kommt per GPS, Mittel der letzten 3 Tage) |
+| F06 | Login/Rollen | ✅ Admin (= Firmenchef), Mitarbeiter, Servicetechniker (ADR-09); Admin hat die normale Geräteansicht plus „Verwaltung“ (Geräte, Kategorien, Nutzer) |
+| F07 | Gerätestammdaten | ✅ Geräte anlegen, bearbeiten, löschen (Detailansicht oder Verwaltung → Geräte); Name, Kategorie (aus der Liste, die der Admin pflegt), Ort; Position kommt per GPS, Mittel der letzten 3 Tage |
 | F08 | Datenaufnahme MQTT | ✅ Collector + Import der Kurs-Datenbank |
 | F09 | Techniker-Zuordnung | ✅ je Gerät ein Servicetechniker; Techniker sieht nur seine Geräte |
 | F10 | Kartenansicht | ✅ Karte in der Übersicht und Detailansicht; „Route“ öffnet Google Maps mit dem Gerät als Ziel (Liste, Karte, Detailansicht, Kalender) |
-| F11 | Detailansicht | ✅ inkl. Stammdaten und zugeordnetem Techniker (nur Firmenchef/Mitarbeiter) |
-| F12 | Kalender voraussichtlicher Ausfälle | ✅ Wochenansicht (am Handy immer) und Monatsansicht `/kalender`, oben „Jetzt fällig“: je Gerät „wird kritisch“ (gelb) und „voraussichtlich leer“ (rot) aus der Prognose (F04); Firmenchef/Mitarbeiter alle Geräte, Techniker nur zugeordnete |
-| F13 | Privater Kalender Servicetechniker | ✅ Techniker tragen Wechseltermine (Gerät, Datum, Uhrzeit, Notiz) ein; nur für sie selbst sichtbar, „Wechsel einplanen“ aus Kalender und Detailansicht, „+ Termin“ direkt am Tag |
+| F11 | Detailansicht | ✅ inkl. Stammdaten und zugeordnetem Techniker; MQTT-Rohnachrichten nur für Admin/Mitarbeiter; Techniker sehen hier ihre Termine für das Gerät |
+| F12 | Kalender voraussichtlicher Ausfälle | ✅ Wochenansicht (am Handy immer) und Monatsansicht `/kalender`, oben „Jetzt fällig“: je Gerät „wird kritisch“ (gelb) und „voraussichtlich leer“ (rot) aus der Prognose (F04); Admin/Mitarbeiter alle Geräte, Techniker nur zugeordnete |
+| F13 | Privater Kalender Servicetechniker | ✅ Techniker tragen Wechseltermine (Gerät, Datum, Uhrzeit, Notiz) ein, auch mehrere je Gerät; nur für sie selbst sichtbar; anlegen, bearbeiten, löschen im Kalender und in der Detailansicht („Weiteren Termin eintragen“) |
 | – | Handy-Ansicht | ✅ für Servicetechniker unterwegs: Navigation unten, Liste oder Karte umschaltbar, große Schaltflächen, Kalender als Wochenliste |
 
 ---

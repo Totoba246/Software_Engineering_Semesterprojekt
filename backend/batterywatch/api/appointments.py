@@ -8,8 +8,7 @@ come from GET /api/devices, fields estimated_critical_at / estimated_empty_at).
 Who may do what:
   techniker            own appointments only: list, create, change, delete.
                        New appointments only for devices assigned to them.
-  chef, mitarbeiter,   no access (403): the appointments are private.
-  admin
+  admin, mitarbeiter   no access (403): the appointments are private.
 Someone else's appointment id answers 404, so ids of other people's
 appointments are not even revealed.
 """

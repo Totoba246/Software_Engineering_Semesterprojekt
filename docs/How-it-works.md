@@ -176,9 +176,9 @@ If something's wrong (node 101 currently sends `voltage_mV: 5368709120`, which i
 
 | Role | Sees | May change |
 |---|---|---|
-| Admin | only the user management | accounts (create, role, lock, password, delete) |
-| Firmenchef, Mitarbeiter | all devices, calendar of expected failures | devices (add, edit, delete), assign technicians |
-| Servicetechniker | only devices assigned to them, calendar with their own appointments | their own private replacement appointments |
+| Admin (= Firmenchef) | everything a Mitarbeiter sees, plus the page "Verwaltung" | everything a Mitarbeiter may, plus accounts (create, role, lock, password, delete) and device categories |
+| Mitarbeiter | all devices, raw MQTT messages, calendar of expected failures | devices (add, edit, delete; also as a table under "Verwaltung"), assign technicians |
+| Servicetechniker | only devices assigned to them (no raw MQTT messages), calendar with their own appointments | their own private replacement appointments - several per device, changed or deleted in the calendar or on the device page |
 
 The **server** checks this for every request (`backend/batterywatch/api/deps.py`), not only the web
 page: a technician asking for someone else's device gets "403 Kein Zugriff", even with hand-made

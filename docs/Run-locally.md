@@ -42,17 +42,17 @@ The first start takes a few minutes (downloads + builds). Then your browser open
 
 | Role | Sees / may | Demo account (test mode) |
 |---|---|---|
-| **Admin** | only the user management: create accounts, change roles, lock, reset passwords, delete | your own admin from the first start |
-| **Firmenchef** / **Mitarbeiter** | all devices; add, edit, delete devices; assign service technicians | `chef` / `mitarbeiter` |
-| **Servicetechniker** | only the devices assigned to them | `techniker1`, `techniker2` |
+| **Admin** (= Firmenchef) | everything a Mitarbeiter can, plus *Verwaltung → Kategorien* and *Verwaltung → Nutzer* (create accounts, change roles, lock, reset passwords, delete) | your own admin from the first start, or `chef` |
+| **Mitarbeiter** | all devices; add, edit, delete devices (*Verwaltung → Geräte*); assign service technicians | `mitarbeiter` |
+| **Servicetechniker** | only the devices assigned to them; private replacement appointments | `techniker1`, `techniker2` |
 
 Demo password: `demo1234` (only for trying out locally – never on the server).
 
-- **New account:** Admin → *Nutzer anlegen*. The page shows a **start password** once; pass it on.
+- **New account:** Admin → *Verwaltung → Nutzer → Nutzer anlegen*. The page shows a **start password** once; pass it on.
   At the first login the person must choose their own password.
 - **Forgot password:** the admin clicks *Passwort zurücksetzen* – or, if the admin itself forgot it:
   `python start.py reset-password admin`
-- **Add a node:** as Firmenchef/Mitarbeiter → *+ Gerät hinzufügen*. The device ID must be the one in
+- **Add a node:** as Admin/Mitarbeiter → *+ Gerät hinzufügen*. The device ID must be the one in
   the node's MQTT topic (`traffic-nodes/101/measurements` → `101`). Nodes that just start sending are
   added automatically anyway; you can then give them a name, place, category and technician on their
   detail page (*Stammdaten → Bearbeiten*). The position on the map always comes from the node's GPS

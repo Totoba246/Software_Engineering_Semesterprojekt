@@ -32,7 +32,7 @@ def assign(db, device_id, username):
 
 # --- F12: prediction for all devices -------------------------------------------------------
 def test_device_list_contains_prediction(make_client, db_url):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     add_measurements(db_url, "101", hours=72, volts_start=12.0, volts_end=11.7)  # -0.1 V/day
     add_measurements(db_url, "102", hours=72, volts_start=12.4, volts_end=12.4)  # flat: no estimate
     devices = {d["device_id"]: d for d in chef.get("/api/devices").json()}
@@ -53,7 +53,7 @@ def test_device_list_contains_prediction(make_client, db_url):
 
 
 def test_already_critical_device_is_due_now_even_without_trend(make_client, db_url):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     add_measurements(db_url, "101", hours=72, volts_start=10.8, volts_end=10.8)  # flat, ~14 %
     d = chef.get("/api/devices").json()[0]
     assert d["status"] == "krit"
@@ -98,6 +98,19 @@ def test_technician_creates_lists_changes_and_deletes_appointment(make_client, d
     assert tech.get("/api/appointments").json() == []
 
 
+def test_several_appointments_for_one_device(make_client, db, db_url):
+    """A battery may need more than one visit (e.g. check first, replace later)."""
+    tech = make_client("techniker", "elif")
+    add_measurements(db_url, "101", hours=3)
+    assign(db, "101", "elif")
+    later = "2026-11-24T10:00:00+01:00"
+    for when in (later, WHEN):
+        assert tech.post("/api/appointments", json={"device_id": "101", "starts_at": when}).status_code == 201
+    listed = tech.get("/api/appointments").json()
+    assert [x["device_id"] for x in listed] == ["101", "101"]
+    assert ts(listed[0]["starts_at"]) == ts(WHEN)  # sorted by time
+
+
 def test_appointments_only_for_own_devices(make_client, db, db_url):
     tech = make_client("techniker", "elif")
     make_client("techniker", "jonas")
@@ -122,8 +135,8 @@ def test_appointments_are_private(make_client, db, db_url):
     assert jonas.get("/api/appointments").json() == []
     assert jonas.patch(f"/api/appointments/{a['id']}", json={"note": "x"}).status_code == 404
     assert jonas.delete(f"/api/appointments/{a['id']}").status_code == 404
-    # Firmenchef, Mitarbeiter, Admin: no access to the private calendar at all
-    for role in ("chef", "mitarbeiter", "admin"):
+    # Admin, Mitarbeiter: no access to the private calendar at all
+    for role in ("mitarbeiter", "admin"):
         client = make_client(role)
         assert client.get("/api/appointments").status_code == 403, role
         assert client.post("/api/appointments", json={"device_id": "101", "starts_at": WHEN}).status_code == 403
@@ -144,7 +157,7 @@ def test_reassigned_device_keeps_appointment_but_marks_it(make_client, db, db_ur
 
 def test_deleting_device_or_user_deletes_appointments(make_client, db, db_url):
     tech = make_client("techniker", "elif")
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     add_measurements(db_url, "101", hours=3)
     assign(db, "101", "elif")
     tech.post("/api/appointments", json={"device_id": "101", "starts_at": WHEN})

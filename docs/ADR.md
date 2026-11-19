@@ -89,7 +89,7 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
 
 ## ADR-09 · Login und Autorisierung in Eigenimplementierung
 
-- **Kontext:** F06 (Login mit den Rollen Admin, Firmenchef, Mitarbeiter, Servicetechniker) ist Teil des MVP. Externe Identity-Provider (z. B. Keycloak) wären für wenige Nutzer überdimensioniert.
+- **Kontext:** F06 (Login mit den Rollen Admin, Mitarbeiter, Servicetechniker; ursprünglich zusätzlich Firmenchef) ist Teil des MVP. Externe Identity-Provider (z. B. Keycloak) wären für wenige Nutzer überdimensioniert.
 - **Entscheidung:** Login und Rollenprüfung werden **selbst im Auth-Modul des Monolithen** umgesetzt. Passwörter werden mit einem etablierten Verfahren aus einer Bibliothek gehasht (z. B. bcrypt oder Argon2). Die Rechte werden bei jedem API-Endpunkt im Backend geprüft, nicht nur im Frontend.
 - **Konsequenzen:**
   - ➕ Keine zusätzliche Infrastruktur, volle Kontrolle über das Rollenmodell
@@ -100,8 +100,11 @@ Format je Entscheidung: **Kontext → Entscheidung → Konsequenzen**.
     (argon2-cffi), in der Datenbank nur der SHA-256-Hash des Session-Tokens. Brute-Force-Schutz:
     nach 5 Fehlversuchen je Benutzername 5 Minuten Sperre. Neue Konten bekommen ein Start-Passwort,
     das beim ersten Login geändert werden muss (es gibt keinen E-Mail-Versand).
-  - Rechte je Rolle (Use-Case-Diagramm): Admin = nur Nutzerverwaltung; Firmenchef/Mitarbeiter = alle
-    Geräte, Stammdaten, Techniker zuordnen; Servicetechniker = nur zugeordnete Geräte (Server filtert).
+  - Rechte je Rolle: Admin (= Firmenchef) = alles, was ein Mitarbeiter darf, plus Nutzerkonten und
+    Gerätekategorien; Mitarbeiter = alle Geräte, Stammdaten, Techniker zuordnen, MQTT-Rohnachrichten;
+    Servicetechniker = nur zugeordnete Geräte, keine MQTT-Rohnachrichten (Server filtert).
+    Änderung (v5): Firmenchef und Admin waren in der Praxis dieselbe Person, darum gibt es die Rolle
+    „Firmenchef“ nicht mehr; bestehende Konten werden beim Start automatisch Admin (`schema.sql`).
     Getestet in `backend/tests/test_auth.py`.
 
 ## ADR-10 · Collection-Service für die Datenaufnahme

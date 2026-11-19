@@ -52,17 +52,23 @@ export const api = {
   changePassword: (current_password, new_password) =>
     request('POST', '/api/auth/password', { current_password, new_password }),
 
-  // devices (Firmenchef/Mitarbeiter: all, Servicetechniker: only assigned)
+  // devices (Admin/Mitarbeiter: all, Servicetechniker: only assigned)
   devices: () => get('/api/devices'),
   device: (id) => get(`/api/devices/${enc(id)}`),
   history: (id, hours) => get(`/api/devices/${enc(id)}/history?hours=${hours}`),
   messages: (id, limit = 20) => get(`/api/devices/${enc(id)}/messages?limit=${limit}`),
   statusRules: () => get('/api/status-rules'),
-  // master data (Firmenchef/Mitarbeiter)
+  // master data (Admin/Mitarbeiter)
   technicians: () => get('/api/technicians'),
   createDevice: (data) => request('POST', '/api/devices', data),
   updateDevice: (id, data) => request('PATCH', `/api/devices/${enc(id)}`, data),
   deleteDevice: (id) => request('DELETE', `/api/devices/${enc(id)}`),
+
+  // device categories (read: Admin/Mitarbeiter, change: Admin)
+  categories: () => get('/api/categories'),
+  createCategory: (name) => request('POST', '/api/categories', { name }),
+  renameCategory: (id, name) => request('PATCH', `/api/categories/${id}`, { name }),
+  deleteCategory: (id) => request('DELETE', `/api/categories/${id}`),
 
   // private calendar (Servicetechniker only; other roles get 403)
   appointments: () => get('/api/appointments'),
@@ -77,5 +83,12 @@ export const api = {
   deleteUser: (id) => request('DELETE', `/api/users/${id}`),
 }
 
-export const ROLES = { admin: 'Admin', chef: 'Firmenchef', mitarbeiter: 'Mitarbeiter', techniker: 'Servicetechniker' }
-export const isManagement = (user) => user?.role === 'chef' || user?.role === 'mitarbeiter'
+// Admin = Firmenchef (there is no separate Firmenchef role any more)
+export const ROLES = { admin: 'Admin', mitarbeiter: 'Mitarbeiter', techniker: 'Servicetechniker' }
+export const ROLE_HINT = {
+  admin: 'alle Geräte, Nutzer und Kategorien verwalten',
+  mitarbeiter: 'alle Geräte sehen und bearbeiten, Techniker zuordnen',
+  techniker: 'nur die ihm zugeordneten Geräte, eigener Terminkalender',
+}
+export const isManagement = (user) => user?.role === 'admin' || user?.role === 'mitarbeiter'
+export const isAdmin = (user) => user?.role === 'admin'

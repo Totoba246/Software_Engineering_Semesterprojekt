@@ -97,8 +97,8 @@ def test_import_shift_to_now_keeps_time_of_day(db_url, db):
 # --- API -----------------------------------------------------------------------
 @pytest.fixture
 def api(make_client):
-    """API client logged in as a Firmenchef (sees all devices)."""
-    return make_client("chef")
+    """API client logged in as an admin (sees all devices)."""
+    return make_client("admin")
 
 
 def seed(db_url, device_id="SIM-001", hours=48, volts_start=12.0, volts_end=11.0, end=None):

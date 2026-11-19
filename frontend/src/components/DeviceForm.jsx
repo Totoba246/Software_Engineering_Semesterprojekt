@@ -1,14 +1,12 @@
 /*
  * FORM FOR DEVICE MASTER DATA (F07) + technician assignment (F09).
- * Used to add a node (pages/NewDevice.jsx) and to edit one (DeviceDetail.jsx).
- * Only Firmenchef/Mitarbeiter see it; the server checks that again.
+ * Used to add a node (pages/NewDevice.jsx) and to edit one (DeviceDetail.jsx,
+ * Verwaltung -> Geräte). Only Admin/Mitarbeiter see it; the server checks that again.
+ * The category is chosen from the list the admin maintains (Verwaltung -> Kategorien).
  * No coordinates: the position always comes from the node's GPS.
  */
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
-
-// Suggestions from the GUI draft; any other text is allowed too
-const CATEGORIES = ['Baustellenampel', 'Geschwindigkeitsanzeige', 'Verkehrszählgerät', 'Warnleitanhänger', 'Messanhänger']
 
 const toInput = (v) => (v == null ? '' : String(v))
 
@@ -22,11 +20,13 @@ export default function DeviceForm({ device, onSubmit, onCancel, submitLabel = '
     technician_id: toInput(device?.technician?.id),
   })
   const [technicians, setTechnicians] = useState([])
+  const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     api.technicians().then(setTechnicians).catch(() => setTechnicians([]))
+    api.categories().then((list) => setCategories(list.map((c) => c.name))).catch(() => setCategories([]))
   }, [])
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
@@ -65,8 +65,12 @@ export default function DeviceForm({ device, onSubmit, onCancel, submitLabel = '
       <div className="two">
         <label className="field">
           <span>Kategorie</span>
-          <input type="text" list="categories" value={form.category} onChange={set('category')} maxLength={60} />
-          <datalist id="categories">{CATEGORIES.map((c) => <option key={c} value={c} />)}</datalist>
+          <select value={form.category} onChange={set('category')}>
+            <option value="">– keine –</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            {form.category && !categories.includes(form.category) && <option value={form.category}>{form.category}</option>}
+          </select>
+          <small className="hint">Neue Kategorien legt der Admin unter Verwaltung → Kategorien an.</small>
         </label>
         <label className="field">
           <span>Ort</span>
