@@ -32,7 +32,7 @@ from ..db import ensure_schema
 
 DEMO_PASSWORD = "demo1234"
 DEMO_USERS = [  # username, display name, role
-    ("chef", "Thomas Weber", "chef"),
+    ("chef", "Thomas Weber", "admin"),  # Firmenchef = Admin (also user management)
     ("mitarbeiter", "Sarah Klein", "mitarbeiter"),
     ("techniker1", "Elif Aydin", "techniker"),
     ("techniker2", "Jonas Brandt", "techniker"),
@@ -142,6 +142,8 @@ def seed_demo(conn) -> None:
             create_user(conn, username, name, role, DEMO_PASSWORD)
             row = conn.execute("SELECT id FROM users WHERE username = %s", (username,)).fetchone()
         ids[username] = row["id"]
+    for category in sorted({d[1] for d in DEMO_DEVICES}):  # devices may only use existing categories
+        conn.execute("INSERT INTO categories (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (category,))
     for i, (name, category, location, tech) in enumerate(DEMO_DEVICES, start=1):
         conn.execute(
             "INSERT INTO devices (device_id, device_type, name, category, location, technician_id) "

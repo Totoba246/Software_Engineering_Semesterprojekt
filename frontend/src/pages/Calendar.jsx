@@ -5,61 +5,42 @@
  *                    by the server from the voltage trend of the last 72 h (GET /api/devices):
  *                      amber  "Wird kritisch"        estimated_critical_at (< 20 %)
  *                      red    "Voraussichtlich leer" estimated_empty_at    (0 %)
- *                    Firmenchef/Mitarbeiter see all devices, Servicetechniker only
+ *                    Admin/Mitarbeiter see all devices, Servicetechniker only
  *                    their own (the server filters the device list).
  *   F13 / issue #12  Servicetechniker enter PRIVATE appointments: when they want to
  *                    replace which battery (blue). Only they can see them
- *                    (GET/POST/DELETE /api/appointments, other roles get 403).
+ *                    (GET/POST/PATCH/DELETE /api/appointments, other roles get 403).
+ *                    A device may have several appointments.
  *
  * HOW THE PAGE IS BUILT
  *   "Jetzt fällig"   red box at the top: devices that are critical right now
  *   WEEK VIEW        the default, and the only view on phones: seven days with
  *                    every entry written out (what, when, which device, where)
  *                    and the actions right on it: Route (Google Maps),
- *                    "Wechsel einplanen" / "Löschen".
+ *                    "Wechsel einplanen" / "+ Weiterer Termin", "Bearbeiten", "Löschen".
  *                    Phone: a strip Mo-So to jump to a day, days stacked below.
  *                    Wide screen: seven columns next to each other.
  *   MONTH VIEW       wide screens only (switch "Woche | Monat"): the overview grid;
  *                    click a day to see its entries on the right.
  *   "Als Nächstes fällig"  upcoming devices; a click jumps to that week.
- *   Appointments are entered in a small dialog that opens from "Wechsel
- *   einplanen" (device + suggested day prefilled) or "+ Termin" on a day.
+ *   Appointments are entered in a small dialog (components/AppointmentForm.jsx)
+ *   that opens from "Wechsel einplanen" (device + suggested day prefilled),
+ *   "+ Termin" on a day, or "Bearbeiten" on an appointment.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
+import { AppointmentDialog, appointmentToForm } from '../components/AppointmentForm.jsx'
 import { BatteryLevel } from '../components/Battery.jsx'
 import RouteLink from '../components/RouteLink.jsx'
 import { pct } from '../format.js'
 import { usePolling } from '../usePolling.js'
+import { addDays, DAY, dayKey, dueAt, hhmm, MONTHS, p2, parseKey, shortDay, suggestedDay, weekStart, WEEKDAYS_LONG } from '../dates.js'
 
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-const WEEKDAYS_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
-const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
-const DAY = 24 * 3600e3
 
-/* --- date helpers (everything in the browser's time zone) ------------------------------ */
-const p2 = (n) => String(n).padStart(2, '0')
-// "2026-11-17" (the key of a calendar day)
-export const dayKey = (date) => {
-  const d = new Date(date)
-  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
-}
-const parseKey = (key) => {
-  const [y, m, d] = key.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-const addDays = (date, n) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n)
-const weekStart = (date) => addDays(date, -((date.getDay() + 6) % 7)) // the Monday of that week
-const hhmm = (date) => {
-  const d = new Date(date)
-  return `${p2(d.getHours())}:${p2(d.getMinutes())}`
-}
-export const shortDay = (date) => {
-  const d = new Date(date)
-  return `${WEEKDAYS_LONG[d.getDay()].slice(0, 2)} ${d.getDate()}.${p2(d.getMonth() + 1)}.`
-}
+/* --- date helpers: see ../dates.js ------------------------------------------------------- */
 // calendar week number (ISO 8601, as used in Germany)
 function isoWeek(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
@@ -70,16 +51,6 @@ function weekTitle(start) {
   const end = addDays(start, 6)
   const from = start.getMonth() === end.getMonth() ? `${start.getDate()}.` : `${start.getDate()}. ${MONTHS[start.getMonth()]}`
   return `${from} – ${end.getDate()}. ${MONTHS[end.getMonth()]} ${end.getFullYear()}`
-}
-
-// The date the device should be replaced by: when it becomes critical (or empty).
-const dueAt = (d) => d.estimated_critical_at ?? d.estimated_empty_at
-// Suggested replacement day: one day before it becomes critical, at the earliest today.
-export function suggestedDay(d) {
-  const due = dueAt(d)
-  const today = new Date()
-  if (!due) return dayKey(today)
-  return dayKey(Math.max(today.getTime(), new Date(due).getTime() - DAY))
 }
 
 /* --- small helpers ------------------------------------------------------------------------ */
@@ -130,7 +101,7 @@ function DeviceName({ d, fallback }) {
 }
 
 /* --- one calendar entry, written out ---------------------------------------------------------- */
-function Entry({ e, tech, planned, onPlan, onDelete }) {
+function Entry({ e, tech, planned, onPlan, onEdit, onDelete }) {
   const [confirm, setConfirm] = useState(false)
   if (e.type === 'appt') {
     const d = e.a.assigned ? e.d : null
@@ -143,6 +114,7 @@ function Entry({ e, tech, planned, onPlan, onDelete }) {
         {e.a.note && <span className="meta note">„{e.a.note}“</span>}
         <div className="entry-actions">
           {d && <RouteLink device={d} />}
+          {!confirm && <button type="button" className="btn-s" onClick={() => onEdit(e.a)}>Bearbeiten</button>}
           {confirm ? (
             <>
               <button type="button" className="btn-s danger-solid" onClick={() => onDelete(e.a)}>Wirklich löschen</button>
@@ -171,10 +143,17 @@ function Entry({ e, tech, planned, onPlan, onDelete }) {
       )}
       <div className="entry-actions">
         <RouteLink device={e.d} />
-        {tech && !planned && <button type="button" className="btn-s plan-btn" onClick={() => onPlan(e.d)}>Wechsel einplanen</button>}
+        {tech && <PlanButton planned={planned} onClick={() => onPlan(e.d)} />}
       </div>
     </li>
   )
+}
+
+// "Wechsel einplanen" - or, if the device already has an appointment, "Weiterer Termin"
+function PlanButton({ planned, onClick }) {
+  return planned
+    ? <button type="button" className="btn-s" onClick={onClick} title="Weiteren Termin für dieses Gerät eintragen">+ Weiterer Termin</button>
+    : <button type="button" className="btn-s plan-btn" onClick={onClick}>Wechsel einplanen</button>
 }
 
 function Entries({ list, ...rest }) {
@@ -279,75 +258,6 @@ function MonthGrid({ month, sel, events, onSelect }) {
   )
 }
 
-/* --- form for an own appointment (Servicetechniker, F13), shown in a dialog ----------------------- */
-function AppointmentForm({ devices, form, setForm, onSaved, onCancel }) {
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
-
-  if (!devices.length) {
-    return (
-      <>
-        <p className="hint">Ihnen sind noch keine Geräte zugeordnet.</p>
-        <button className="btn-s" type="button" onClick={onCancel}>Schließen</button>
-      </>
-    )
-  }
-
-  // warnings: too late or in the past (saving is still allowed)
-  const d = devices.find((x) => x.device_id === form.device)
-  let hint = null
-  if (form.date && form.date < dayKey(new Date())) hint = 'Das Datum liegt in der Vergangenheit.'
-  else if (d?.estimated_empty_at && form.date > dayKey(d.estimated_empty_at)) {
-    hint = `Achtung: Das Gerät ist voraussichtlich schon am ${shortDay(d.estimated_empty_at)} leer.`
-  } else if (d?.estimated_critical_at && form.date > dayKey(d.estimated_critical_at)) {
-    hint = `Hinweis: Der Akku ist voraussichtlich ab ${shortDay(d.estimated_critical_at)} kritisch.`
-  }
-
-  async function submit(e) {
-    e.preventDefault()
-    if (!form.device || !form.date || !form.time) {
-      setError('Bitte Gerät, Datum und Uhrzeit angeben.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      const starts_at = new Date(`${form.date}T${form.time}`).toISOString() // local time -> UTC
-      onSaved(await api.createAppointment({ device_id: form.device, starts_at, note: form.note }))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const sorted = [...devices].sort((a, b) => (dueAt(a) ? new Date(dueAt(a)) : Infinity) - (dueAt(b) ? new Date(dueAt(b)) : Infinity))
-  return (
-    <form className="form" onSubmit={submit} noValidate>
-      <label className="field"><span>Gerät</span>
-        <select value={form.device} onChange={set('device')} required>
-          <option value="">Gerät wählen</option>
-          {sorted.map((x) => <option key={x.device_id} value={x.device_id}>{x.name} ({pct(x.soc_percent)})</option>)}
-        </select>
-      </label>
-      <div className="two">
-        <label className="field"><span>Datum</span><input type="date" value={form.date} onChange={set('date')} required /></label>
-        <label className="field"><span>Uhrzeit</span><input type="time" value={form.time} onChange={set('time')} required /></label>
-      </div>
-      <label className="field"><span>Notiz (optional)</span>
-        <input type="text" value={form.note} onChange={set('note')} maxLength={200} placeholder="z. B. Ersatzakku mitnehmen" />
-      </label>
-      {hint ? <p className="notice warn">{hint}</p> : <p className="hint">Termine sind privat und nur für Sie sichtbar.</p>}
-      {error && <p className="notice warn" role="alert">{error}</p>}
-      <div className="row-btns">
-        <button className="btn" type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Termin speichern'}</button>
-        <button className="btn-s" type="button" onClick={onCancel}>Abbrechen</button>
-      </div>
-    </form>
-  )
-}
-
 /* --- "Jetzt fällig": devices that are critical right now -------------------------------------------- */
 function DueNow({ devices, tech, plannedFor, onPlan }) {
   const now = devices.filter((d) => d.status === 'krit').sort((a, b) => (a.soc_percent ?? 0) - (b.soc_percent ?? 0))
@@ -371,7 +281,7 @@ function DueNow({ devices, tech, plannedFor, onPlan }) {
               </span>
               <span className="entry-actions">
                 <RouteLink device={d} />
-                {tech && !planned && <button type="button" className="btn-s plan-btn" onClick={() => onPlan(d)}>Wechsel einplanen</button>}
+                {tech && <PlanButton planned={planned} onClick={() => onPlan(d)} />}
               </span>
             </li>
           )
@@ -423,6 +333,7 @@ export default function Calendar({ devices, me }) {
   const view = phone ? 'week' : viewPref // phones: always the week
   const [sel, setSel] = useState(() => dayKey(new Date()))
   const [dialog, setDialog] = useState(null) // values of the appointment form while it is open
+  const [dialogTitle, setDialogTitle] = useState(null)
   const [msg, setMsg] = useState(null) // { text, warn }
   const appts = usePolling(() => (tech ? api.appointments() : Promise.resolve([])), [tech])
   const viewRef = useRef(null)
@@ -443,17 +354,19 @@ export default function Calendar({ devices, me }) {
   const start = weekStart(selDate)
   const month = { y: selDate.getFullYear(), m: selDate.getMonth() }
 
-  const plan = (d) => { setMsg(null); setDialog({ device: d.device_id, date: suggestedDay(d), time: '08:00', note: '' }) }
-  const planDay = (key) => { setMsg(null); setDialog({ device: '', date: key, time: '08:00', note: '' }) }
+  const openDialog = (form, title = null) => { setMsg(null); setDialogTitle(title); setDialog(form) }
+  const plan = (d) => openDialog({ device: d.device_id, date: suggestedDay(d), time: '08:00', note: '' },
+    plannedFor[d.device_id] ? 'Weiteren Termin eintragen' : null)
+  const planDay = (key) => openDialog({ device: '', date: key, time: '08:00', note: '' })
+  const edit = (a) => openDialog({ ...appointmentToForm(a), deviceName: a.device_name })
   const showDay = (key) => { setSel(key); viewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
-  // /kalender?g=101 (link from the detail page): jump to that device
+  // /kalender?g=101 (link from the detail page): jump to the day that device is due
   const g = params.get('g')
   useEffect(() => {
     const d = g && list.find((x) => x.device_id === g)
     if (!d) return
-    if (tech) plan(d)
-    else if (dueAt(d)) setSel(dayKey(dueAt(d)))
+    if (dueAt(d)) setSel(dayKey(dueAt(d)))  // planning itself is done on the detail page
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [g, devices === null])
 
@@ -473,14 +386,14 @@ export default function Calendar({ devices, me }) {
       setMsg({ text: `Löschen fehlgeschlagen: ${err.message}`, warn: true })
     }
   }
-  const saved = (a) => {
+  const saved = (a, changed) => {
     setDialog(null)
-    setMsg({ text: `Termin am ${shortDay(a.starts_at)} um ${hhmm(a.starts_at)} Uhr gespeichert.` })
+    setMsg({ text: `Termin am ${shortDay(a.starts_at)} um ${hhmm(a.starts_at)} Uhr ${changed ? 'geändert' : 'gespeichert'}.` })
     setSel(dayKey(a.starts_at))
     appts.refresh()
   }
 
-  const entryProps = { plannedFor, onPlan: plan, onDelete: remove }
+  const entryProps = { plannedFor, onPlan: plan, onEdit: edit, onDelete: remove }
   const dayList = events[sel] ?? []
   const weekEmpty = Array.from({ length: 7 }, (_, i) => events[dayKey(addDays(start, i))]).every((l) => !l)
   const thisWeek = dayKey(start) === dayKey(weekStart(new Date()))
@@ -556,13 +469,8 @@ export default function Calendar({ devices, me }) {
       </div>
 
       {dialog && (
-        <div className="overlay sheet" role="dialog" aria-modal="true" aria-label="Wechseltermin eintragen"
-          onClick={(e) => { if (e.target === e.currentTarget) setDialog(null) }}>
-          <section className="card dialog">
-            <h2>Wechseltermin eintragen</h2>
-            <AppointmentForm devices={list} form={dialog} setForm={setDialog} onSaved={saved} onCancel={() => setDialog(null)} />
-          </section>
-        </div>
+        <AppointmentDialog title={dialogTitle} devices={list} form={dialog} setForm={setDialog}
+          onSaved={saved} onCancel={() => setDialog(null)} />
       )}
     </div>
   )

@@ -43,7 +43,7 @@ const distinct = (list) => [...new Set(list.filter(Boolean))].sort((a, b) => a.l
 function EmptyList({ me }) {
   if (me.role === 'techniker') {
     return <div className="empty"><p><strong>Ihnen sind noch keine Geräte zugeordnet.</strong></p>
-      <p>Die Zuordnung machen Firmenchef oder Mitarbeiter in der Detailansicht eines Geräts.</p></div>
+      <p>Die Zuordnung machen Admin oder Mitarbeiter (Detailansicht eines Geräts oder Verwaltung → Geräte).</p></div>
   }
   return (
     <div className="empty">

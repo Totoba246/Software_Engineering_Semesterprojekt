@@ -18,13 +18,14 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 ROLES = {
-    "admin": "Admin",
-    "chef": "Firmenchef",
+    "admin": "Admin",  # = Firmenchef: also user accounts and categories
     "mitarbeiter": "Mitarbeiter",
     "techniker": "Servicetechniker",
 }
 # Roles that see ALL devices and may edit them (the "Betreiber" in the use-case diagram)
-MANAGEMENT = ("chef", "mitarbeiter")
+MANAGEMENT = ("admin", "mitarbeiter")
+# Roles that may read device data at all
+VIEWERS = (*MANAGEMENT, "techniker")
 
 MIN_PASSWORD_LENGTH = 8
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._@-]{2,49}$")

@@ -38,7 +38,7 @@ def test_everything_needs_login_except_health(make_client):
 
 
 def test_login_wrong_password_and_unknown_user(make_client):
-    make_client("chef")
+    make_client("admin", "chef")
     anon = make_client()
     assert anon.post("/api/auth/login", json={"username": "chef", "password": "falsch123"}).status_code == 401
     assert anon.post("/api/auth/login", json={"username": "gibtsnicht", "password": "x"}).status_code == 401
@@ -55,7 +55,7 @@ def test_login_cookie_me_and_logout(make_client):
 
 
 def test_too_many_wrong_passwords_block_the_username(make_client):
-    make_client("chef")
+    make_client("admin", "chef")
     anon = make_client()
     for _ in range(5):
         assert anon.post("/api/auth/login", json={"username": "chef", "password": "falsch"}).status_code == 401
@@ -78,16 +78,31 @@ def test_start_password_must_be_changed_first(make_client):
 
 
 # --- roles: who sees which devices -------------------------------------------------------
-def test_admin_has_no_device_access_and_others_no_user_admin(make_client):
-    admin, chef, tech = make_client("admin"), make_client("chef"), make_client("techniker")
-    assert admin.get("/api/devices").status_code == 403
-    assert chef.get("/api/users").status_code == 403
+def test_admin_sees_devices_and_only_admin_manages_users(make_client, db_url):
+    admin, staff, tech = make_client("admin"), make_client("mitarbeiter"), make_client("techniker")
+    add_measurements(db_url, "101", hours=1)
+    # the admin (= Firmenchef) also has the normal device views
+    assert [d["device_id"] for d in admin.get("/api/devices").json()] == ["101"]
+    assert admin.get("/api/technicians").status_code == 200
+    assert admin.get("/api/users").status_code == 200
+    assert staff.get("/api/users").status_code == 403
     assert tech.get("/api/users").status_code == 403
     assert tech.get("/api/technicians").status_code == 403
 
 
+def test_old_firmenchef_accounts_become_admins(db_url, db):
+    """v5 of schema.sql: the role "chef" no longer exists, such accounts are admins now."""
+    from batterywatch.db import ensure_schema
+    db.execute("ALTER TABLE users DROP CONSTRAINT users_role_check")  # simulate an old database
+    db.execute("INSERT INTO users (username, display_name, role, password_hash) VALUES ('weber', 'W', 'chef', 'x')")
+    ensure_schema(db)
+    assert db.execute("SELECT role FROM users WHERE username = 'weber'").fetchone()[0] == "admin"
+    with pytest.raises(Exception):
+        db.execute("INSERT INTO users (username, display_name, role, password_hash) VALUES ('x', 'X', 'chef', 'x')")
+
+
 def test_technician_sees_only_assigned_devices(make_client, db_url, db):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     tech = make_client("techniker", "elif")
     elif_id = user_id(db, "elif")
     add_measurements(db_url, "101", hours=2)
@@ -98,19 +113,23 @@ def test_technician_sees_only_assigned_devices(make_client, db_url, db):
     assert tech.get("/api/devices/101").status_code == 200
     for path in ("/api/devices/102", "/api/devices/102/history", "/api/devices/102/messages"):
         assert tech.get(path).status_code == 403, path
+    # the raw MQTT messages are office diagnosis: not even for their own device
+    assert tech.get("/api/devices/101/messages").status_code == 403
+    assert chef.get("/api/devices/101/messages").status_code == 200
     # technicians can't change anything
     assert tech.patch("/api/devices/101", json={"name": "x"}).status_code == 403
     assert tech.delete("/api/devices/101").status_code == 403
-    # the assigned technician is only shown to Firmenchef/Mitarbeiter (README F11)
+    # the assigned technician is only shown to Admin/Mitarbeiter (README F11)
     assert chef.get("/api/devices/101").json()["technician"] == {"id": elif_id, "display_name": "Elif"}
     assert tech.get("/api/devices/101").json()["technician"] is None
 
 
-# --- device master data (Firmenchef / Mitarbeiter) ----------------------------------------
+# --- device master data (Admin / Mitarbeiter) --------------------------------------------
 def test_add_edit_and_delete_device(make_client, db_url, db):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     make_client("techniker", "jonas")
     jonas = user_id(db, "jonas")
+    assert chef.post("/api/categories", json={"name": "Baustellenampel"}).status_code == 201
 
     # add a node before it ever sent anything (no coordinates: the position comes from GPS)
     r = chef.post("/api/devices", json={"device_id": "101", "name": "BA-01 Hauptstraße", "category": "Baustellenampel",
@@ -131,6 +150,8 @@ def test_add_edit_and_delete_device(make_client, db_url, db):
     r = chef.patch("/api/devices/101", json={"location": "Rottweil, Marktplatz", "technician_id": None})
     assert r.json()["location"] == "Rottweil, Marktplatz" and r.json()["technician"] is None
     assert r.json()["category"] == "Baustellenampel"
+    # only categories from the list (Verwaltung -> Kategorien)
+    assert chef.patch("/api/devices/101", json={"category": "Gibtsnicht"}).status_code == 400
     assert chef.patch("/api/devices/101", json={"technician_id": user_id(db, "chef")}).status_code == 400  # not a technician
 
     assert chef.delete("/api/devices/101").status_code == 204
@@ -139,7 +160,7 @@ def test_add_edit_and_delete_device(make_client, db_url, db):
 
 
 def test_prediction_for_falling_voltage(make_client, db_url):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     add_measurements(db_url, "101", hours=72, volts_start=12.0, volts_end=11.7)  # -0.1 V/day
     d = chef.get("/api/devices/101").json()
     assert d["voltage_trend_v_per_day"] == pytest.approx(-0.1, abs=0.005)
@@ -162,16 +183,16 @@ def test_admin_creates_user_with_start_password(make_client):
     assert new.post("/api/auth/login", json={"username": "mueller", "password": start_password}).status_code == 200
     assert new.get("/api/devices").status_code == 403  # must change the start password first
 
-    assert admin.post("/api/users", json={"username": "mueller", "display_name": "X", "role": "chef"}).status_code == 409
-    assert admin.post("/api/users", json={"username": "a b", "display_name": "X", "role": "chef"}).status_code == 400
-    assert admin.post("/api/users", json={"username": "kurz", "display_name": "X", "role": "chef",
+    assert admin.post("/api/users", json={"username": "mueller", "display_name": "X", "role": "mitarbeiter"}).status_code == 409
+    assert admin.post("/api/users", json={"username": "a b", "display_name": "X", "role": "mitarbeiter"}).status_code == 400
+    assert admin.post("/api/users", json={"username": "kurz", "display_name": "X", "role": "mitarbeiter",
                                           "password": "123"}).status_code == 400
     assert admin.post("/api/users", json={"username": "x1", "display_name": "X", "role": "kaiser"}).status_code == 422
 
 
 def test_lock_and_reset_password_log_the_user_out(make_client, db):
     admin = make_client("admin")
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     chef_id = user_id(db, "chef")
 
     assert admin.patch(f"/api/users/{chef_id}", json={"active": False}).status_code == 200
@@ -190,7 +211,8 @@ def test_admin_cannot_lock_out_themselves_or_the_last_admin(make_client, db):
     admin = make_client("admin")
     me = user_id(db, "admin")
     assert admin.patch(f"/api/users/{me}", json={"active": False}).status_code == 400
-    assert admin.patch(f"/api/users/{me}", json={"role": "chef"}).status_code == 400
+    assert admin.patch(f"/api/users/{me}", json={"role": "mitarbeiter"}).status_code == 400
+    assert admin.patch(f"/api/users/{me}", json={"role": "chef"}).status_code == 422  # role no longer exists
     assert admin.delete(f"/api/users/{me}").status_code == 400
     assert admin.patch(f"/api/users/{me}", json={"display_name": "Chef-Admin"}).status_code == 200  # name is fine
 
@@ -199,7 +221,7 @@ def test_admin_cannot_lock_out_themselves_or_the_last_admin(make_client, db):
 
 
 def test_removing_a_technician_unassigns_their_devices(make_client, db_url, db):
-    admin, chef = make_client("admin"), make_client("chef")
+    admin, chef = make_client("admin"), make_client("admin", "chef")
     make_client("techniker", "elif")
     make_client("techniker", "jonas")
     add_measurements(db_url, "101", hours=1)
@@ -223,7 +245,7 @@ def test_manage_cli_create_user_and_seed_demo(db_url, db, monkeypatch, capsys):
     manage.main(["--database-url", db_url, "create-user", "admin", "--role", "admin", "--name", "Administrator"])
     manage.main(["--database-url", db_url, "seed-demo"])
     roles = dict(db.execute("SELECT username, role FROM users").fetchall())
-    assert roles == {"admin": "admin", "chef": "chef", "mitarbeiter": "mitarbeiter",
+    assert roles == {"admin": "admin", "chef": "admin", "mitarbeiter": "mitarbeiter",
                      "techniker1": "techniker", "techniker2": "techniker"}
     assigned = db.execute("SELECT count(*) FROM devices WHERE device_id LIKE 'SIM-%' AND technician_id IS NOT NULL")
     assert assigned.fetchone()[0] == 7  # SIM-006 deliberately has no technician
@@ -232,7 +254,7 @@ def test_manage_cli_create_user_and_seed_demo(db_url, db, monkeypatch, capsys):
 
 
 def test_position_is_the_average_gps_position_of_the_last_days(make_client, db_url):
-    chef = make_client("chef")
+    chef = make_client("admin", "chef")
     store = MeasurementStore(db_url)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     # 5 days ago somewhere else (outside the 3-day window), then two positions within it
@@ -244,3 +266,28 @@ def test_position_is_the_average_gps_position_of_the_last_days(make_client, db_u
     pos = chef.get("/api/devices/101").json()["position"]
     assert pos["latitude"] == pytest.approx(48.1) and pos["longitude"] == pytest.approx(8.1)
     assert pos["fixes"] == 2 and pos["days"] == 3
+
+
+# --- categories (admin) -----------------------------------------------------------------------
+def test_categories_are_managed_by_the_admin(make_client, db_url):
+    admin, staff = make_client("admin"), make_client("mitarbeiter")
+    add_measurements(db_url, "101", hours=1)
+    r = admin.post("/api/categories", json={"name": "  Baustellenampel "})
+    assert r.status_code == 201 and r.json() == {"id": r.json()["id"], "name": "Baustellenampel", "device_count": 0}
+    cat = r.json()["id"]
+    assert admin.post("/api/categories", json={"name": "Baustellenampel"}).status_code == 409
+    assert admin.post("/api/categories", json={"name": "  "}).status_code == 422
+    # Mitarbeiter: may read the list and use it, but not change it
+    assert [c["name"] for c in staff.get("/api/categories").json()] == ["Baustellenampel"]
+    assert staff.post("/api/categories", json={"name": "X"}).status_code == 403
+    assert staff.delete(f"/api/categories/{cat}").status_code == 403
+    assert staff.patch("/api/devices/101", json={"category": "Baustellenampel"}).status_code == 200
+    assert admin.get("/api/categories").json()[0]["device_count"] == 1
+
+    # renaming moves the devices along
+    assert admin.patch(f"/api/categories/{cat}", json={"name": "Ampel"}).json()["name"] == "Ampel"
+    assert staff.get("/api/devices/101").json()["category"] == "Ampel"
+    # deleting leaves the device without a category
+    assert admin.delete(f"/api/categories/{cat}").status_code == 204
+    assert staff.get("/api/devices/101").json()["category"] is None
+    assert admin.delete(f"/api/categories/{cat}").status_code == 404

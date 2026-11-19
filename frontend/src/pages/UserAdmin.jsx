@@ -1,5 +1,6 @@
 /*
- * PAGE "Nutzerverwaltung" (Admin only), layout from the GUI draft.
+ * TAB "Nutzer" of the page "Verwaltung" (/verwaltung/nutzer, Admin only),
+ * layout from the GUI draft. The frame with the tabs is pages/Manage.jsx.
  * Create accounts, change roles, lock/unlock, reset passwords, delete.
  *
  * There's no e-mail sending: a new account gets a START PASSWORD that is shown
@@ -7,7 +8,7 @@
  * first login. The server enforces all rules (e.g. you can't lock yourself out).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { api, ROLES } from '../api.js'
+import { api, ROLE_HINT, ROLES } from '../api.js'
 import { dateTime } from '../format.js'
 
 const ROLE_ORDER = Object.keys(ROLES)
@@ -79,12 +80,8 @@ export default function UserAdmin({ me }) {
   ]
 
   return (
-    <div className="scroll">
-      <div className="page">
-        <div className="d-head">
-          <h1>Nutzerverwaltung</h1>
-          <p>Konten anlegen, Rollen ändern, sperren und löschen. Gesperrte Nutzer können sich nicht mehr anmelden.</p>
-        </div>
+    <>
+        <p className="lead">Konten anlegen, Rollen ändern, sperren und löschen. Gesperrte Nutzer können sich nicht mehr anmelden.</p>
         {msg && (
           <div className="msg" role="status">
             {msg.text}
@@ -110,7 +107,8 @@ export default function UserAdmin({ me }) {
               <label className="field"><span>Rolle</span>
                 <select value={form.role} onChange={set('role')}>
                   {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select></label>
+                </select>
+                <small className="hint">{ROLE_HINT[form.role]}</small></label>
               <label className="field"><span>Start-Passwort (leer = automatisch erzeugen)</span>
                 <input type="text" value={form.password} onChange={set('password')} autoComplete="off" maxLength={200} /></label>
               {formError && <p className="hint warn" role="alert">{formError}</p>}
@@ -181,7 +179,6 @@ export default function UserAdmin({ me }) {
             </table>
           </section>
         </div>
-      </div>
-    </div>
+    </>
   )
 }

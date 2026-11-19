@@ -154,7 +154,7 @@ Die GitHub-Action `.github/workflows/ci.yml` führt alle Tests (inkl. MQTT) und 
 ## REST-API
 
 Alle Endpunkte außer `health` und `auth/login` brauchen eine Anmeldung (Cookie `bw_session`).
-Spalte „Wer“: A = Admin, B = Firmenchef/Mitarbeiter, T = Servicetechniker (nur zugeordnete Geräte).
+Spalte „Wer“: A = Admin (= Firmenchef), B = Admin und Mitarbeiter, T = Servicetechniker (nur zugeordnete Geräte).
 
 | Endpunkt | Wer | Inhalt |
 |---|---|---|
@@ -163,14 +163,16 @@ Spalte „Wer“: A = Admin, B = Firmenchef/Mitarbeiter, T = Servicetechniker (n
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/{id}` | A | Nutzerverwaltung (Start-Passwort, Sperren, Rolle, Reset) |
 | `POST /api/devices`, `PATCH/DELETE /api/devices/{id}` | B | Gerät anlegen, Stammdaten/Techniker ändern, löschen |
 | `GET /api/technicians` | B | Servicetechniker für die Zuordnung |
-| `GET/POST /api/appointments`, `PATCH/DELETE /api/appointments/{id}` | T | eigene, private Wechseltermine (F13); nur für zugeordnete Geräte, fremde Termine = 404, andere Rollen = 403 |
+| `GET /api/categories` | B | Gerätekategorien mit Anzahl Geräte (Auswahlliste) |
+| `POST /api/categories`, `PATCH/DELETE /api/categories/{id}` | A | Kategorie anlegen, umbenennen (Geräte ziehen mit), löschen (Geräte verlieren sie) |
+| `GET /api/devices/{id}/messages?limit=20` | B | letzte empfangene MQTT-Nachrichten inkl. verworfener (mit Grund); Techniker 403 |
+| `GET/POST /api/appointments`, `PATCH/DELETE /api/appointments/{id}` | T | eigene, private Wechseltermine (F13), mehrere je Gerät möglich; nur für zugeordnete Geräte, fremde Termine = 404, andere Rollen = 403 |
 
 | Endpunkt (lesen, B + T) | Inhalt |
 |---|---|
 | `GET /api/health` | Lebenszeichen inkl. DB (ohne Anmeldung) |
 | `GET /api/devices` | alle Geräte mit aktuellem Zustand (geglättete Spannung, SoC, Status, Position, letzte Meldung) und Prognose: Spannungstrend V/Tag, „voraussichtlich kritisch/leer“ (Grundlage des Kalenders, F12) |
 | `GET /api/devices/{id}` | wie oben + Anzahl Messwerte, Ø-Strom 24 h |
-| `GET /api/devices/{id}/messages?limit=20` | letzte empfangene MQTT-Nachrichten inkl. verworfener (mit Grund) |
 | `GET /api/devices/{id}/history?hours=168` | Verlauf, zu Zeitintervallen zusammengefasst (Mittel/Min/Max); Zeitraum endet bei der letzten Meldung |
 | `GET /api/status-rules` | aktuell gültige Schwellwerte und Kennlinie |
 
@@ -181,7 +183,8 @@ Das Frontend fragt die Daten alle 5 Minuten neu ab (ADR-06).
 | Tabelle | Inhalt |
 |---|---|
 | `devices` | ein Eintrag je Gerät (beim ersten Messwert automatisch oder von Hand angelegt); Stammdaten `name`, `category`, `location`, `technician_id` (F07, F09). Die Position ist der Mittelwert der GPS-Positionen der letzten `POSITION_DAYS` (3) Tage |
-| `users` | Konten mit Rolle (`admin`, `chef`, `mitarbeiter`, `techniker`), Argon2-Passwort-Hash, gesperrt ja/nein |
+| `users` | Konten mit Rolle (`admin`, `mitarbeiter`, `techniker`; frühere `chef`-Konten werden automatisch `admin`), Argon2-Passwort-Hash, gesperrt ja/nein |
+| `categories` | Gerätekategorien; `devices.category` verweist per Fremdschlüssel auf den Namen (umbenennen zieht mit, löschen setzt NULL) |
 | `sessions` | angemeldete Browser (nur SHA-256-Hash des Cookie-Tokens), mit Ablaufzeit |
 | `measurements` | ein Eintrag je gültiger Nachricht: Rohwerte `current_ma`, `voltage_mv`, berechnet `battery_voltage_mv`, `temperature_c`, GPS, `source` (`mqtt`/`import`) |
 | `raw_messages` | jede empfangene MQTT-Nachricht im Original, `accepted` + `error` (Grund der Ablehnung) |

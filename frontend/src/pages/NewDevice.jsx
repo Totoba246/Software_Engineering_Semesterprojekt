@@ -1,5 +1,5 @@
 /*
- * PAGE "Gerät hinzufügen" (/geraete/neu, Firmenchef/Mitarbeiter only).
+ * PAGE "Gerät hinzufügen" (/geraete/neu, Admin/Mitarbeiter only).
  * Registers a node in advance - e.g. to give it a name, place and technician
  * before its first message. Nodes that just start sending are added
  * automatically by the collector anyway.

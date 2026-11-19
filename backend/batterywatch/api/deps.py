@@ -1,7 +1,7 @@
 """Building blocks every endpoint uses: database connection, logged-in user, role check.
 
 FastAPI "dependencies": an endpoint declares e.g.
-    user: CurrentUser = Depends(require_roles("chef", "mitarbeiter"))
+    user: CurrentUser = Depends(require_roles("admin", "mitarbeiter"))
 and FastAPI runs the check BEFORE the endpoint. Not logged in -> 401,
 wrong role -> 403. So the rights are enforced on the server (ADR-09),
 not only by hiding buttons in the web page.

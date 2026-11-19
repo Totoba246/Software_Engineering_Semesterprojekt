@@ -73,16 +73,17 @@ ALTER TABLE measurements ADD COLUMN IF NOT EXISTS temperature_c DOUBLE PRECISION
 -- =============================================================================
 
 -- People who can log in. Roles (see README 1.c and the use-case diagram):
---   admin       user accounts + system settings, no device views
---   chef        Firmenchef: all devices, master data, assign technicians
---   mitarbeiter same rights as chef
+--   admin       Admin / Firmenchef: everything the Mitarbeiter can, plus user
+--               accounts and device categories (until v5 there was a separate
+--               role "chef"; see the v5 block at the end)
+--   mitarbeiter all devices, master data, assign technicians
 --   techniker   Servicetechniker: only the devices assigned to them
 CREATE TABLE IF NOT EXISTS users (
     id                    SERIAL PRIMARY KEY,
     username              TEXT NOT NULL UNIQUE,      -- login name, stored lower case
     display_name          TEXT NOT NULL,
     email                 TEXT,
-    role                  TEXT NOT NULL CHECK (role IN ('admin', 'chef', 'mitarbeiter', 'techniker')),
+    role                  TEXT NOT NULL CHECK (role IN ('admin', 'mitarbeiter', 'techniker')),
     password_hash         TEXT NOT NULL,             -- Argon2 hash, never the password itself
     must_change_password  BOOLEAN NOT NULL DEFAULT true,  -- start password set by an admin
     active                BOOLEAN NOT NULL DEFAULT true,  -- false = locked, cannot log in
@@ -125,3 +126,34 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS appointments_technician_time_idx ON appointments (technician_id, starts_at);
+
+-- =============================================================================
+-- v5: Firmenchef merged into Admin; device categories (F07)
+-- =============================================================================
+
+-- "Admin and Firmenchef are the same role": every former Firmenchef becomes an
+-- admin. users_role_check is the name PostgreSQL gave the CHECK above.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+UPDATE users SET role = 'admin' WHERE role = 'chef';
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'mitarbeiter', 'techniker'));
+
+-- The categories an admin maintains (page "Verwaltung -> Kategorien").
+-- devices.category keeps the NAME (simple to read in SQL); the foreign key
+-- makes sure only existing categories are used:
+--   rename a category  -> all its devices follow     (ON UPDATE CASCADE)
+--   delete a category  -> its devices have none left (ON DELETE SET NULL)
+CREATE TABLE IF NOT EXISTS categories (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,     -- e.g. "Baustellenampel"
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- categories that were typed in freely before v5 become real categories
+INSERT INTO categories (name) SELECT DISTINCT category FROM devices WHERE category IS NOT NULL
+    ON CONFLICT (name) DO NOTHING;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'devices_category_fk') THEN
+        ALTER TABLE devices ADD CONSTRAINT devices_category_fk FOREIGN KEY (category)
+            REFERENCES categories (name) ON UPDATE CASCADE ON DELETE SET NULL;
+    END IF;
+END $$;

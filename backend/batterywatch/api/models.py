@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from .. import battery
 
-Role = Literal["admin", "chef", "mitarbeiter", "techniker"]
+Role = Literal["admin", "mitarbeiter", "techniker"]
 DEVICE_ID_PATTERN = r"^[A-Za-z0-9_.-]{1,64}$"  # same rule as the MQTT topic (contract.py)
 
 
@@ -61,7 +61,7 @@ class DeviceSummary(BaseModel):
     device_type: str
     category: str | None
     location: str | None
-    technician: Technician | None  # only shown to Firmenchef/Mitarbeiter
+    technician: Technician | None  # only shown to Admin/Mitarbeiter
     last_seen: datetime | None  # time of the newest VALID measurement
     minutes_since_last_seen: float | None
     stale: bool  # True = no valid measurement for STALE_AFTER_MINUTES (shown in red)
@@ -92,7 +92,8 @@ class DeviceDetail(DeviceSummary):
 
 
 class DeviceWrite(BaseModel):
-    """Master data a Firmenchef/Mitarbeiter can set (F07). Empty fields = no value."""
+    """Master data an Admin/Mitarbeiter can set (F07). Empty fields = no value.
+    The category must exist (see /api/categories)."""
 
     name: str | None = Field(None, max_length=100)
     category: str | None = Field(None, max_length=60)
@@ -229,3 +230,19 @@ class UserWithPassword(User):
     password is shown ONCE to the admin, who passes it on."""
 
     start_password: str | None = None
+
+
+# --- Categories (admin) ---------------------------------------------------------------
+class Category(BaseModel):
+    id: int
+    name: str
+    device_count: int  # how many devices have this category
+
+
+class CategoryWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v

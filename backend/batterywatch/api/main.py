@@ -37,7 +37,7 @@ from psycopg_pool import ConnectionPool
 
 from ..config import Settings, get_settings
 from ..db import ensure_schema
-from . import appointments, auth, devices, users
+from . import appointments, auth, categories, devices, users
 from .deps import get_conn
 
 
@@ -72,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(devices.router)
     app.include_router(users.router)
     app.include_router(appointments.router)
+    app.include_router(categories.router)
 
     @app.get("/api/health", tags=["System"])
     def health(conn=Depends(get_conn)):

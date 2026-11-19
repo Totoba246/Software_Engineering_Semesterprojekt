@@ -248,6 +248,9 @@ input[type=text], input[type=password], input[type=email], input[type=number] {
 .who:hover { background: var(--hover) }
 .who b { display: block; font-size: 13px; line-height: 1.2 }
 .who small { display: block; color: var(--muted); font-size: 12px; line-height: 1.2 }
+.menu-who { display: none; margin: 0; padding: 8px 12px 9px; border-bottom: 1px solid var(--line); white-space: nowrap }
+.menu-who b { display: block; font-size: 13px }
+.menu-who small { display: block; color: var(--muted); font-size: 12px }
 .av { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--bg);
   border: 1px solid var(--line); font-size: 12px; font-weight: 800; color: var(--ink-soft); flex: none }
 .float { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--float-shadow) }
@@ -373,7 +376,6 @@ nav a { display: inline-flex; align-items: center; gap: 8px }
 .top nav .ic { display: none }           /* tab icons: phones only */
 .refresh .ic { flex: none }
 .view-switch { display: none }           /* list/map switch: phones only */
-.plan { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px }
 input[type=date], input[type=time] { width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); min-width: 0 }
 
 /* =========================================================================
@@ -495,6 +497,25 @@ a.entry-name:hover { text-decoration: underline }
 }
 
 /* =========================================================================
+ * MEDIUM WIDTH (phones in landscape, tablets, small laptops: 861-1180 px)
+ * The header must stay ONE row: shorter texts first, then the avatar
+ * without the name. (Below 861 px the phone layout further down takes over.)
+ * ========================================================================= */
+@media (max-width: 1180px) {
+  .top { flex-wrap: nowrap; gap: 16px; padding: 8px 16px }
+  .top nav { flex-wrap: nowrap }
+  .top nav a { white-space: nowrap; padding: 6px 10px }
+  .wide-only { display: none }
+  .stamp { white-space: nowrap; gap: 8px }
+  .refresh { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50% }
+}
+@media (max-width: 1000px) {
+  .who { padding: 0 }
+  .who span:last-child { display: none }   /* name + role: shown at the top of the menu instead */
+  .menu-who { display: block }
+}
+
+/* =========================================================================
  * PHONE LAYOUT (service technicians mostly use a phone)
  *  - header in ONE row: logo, time of data, refresh, avatar
  *  - navigation as a tab bar at the BOTTOM (thumb reach)
@@ -542,7 +563,6 @@ a.entry-name:hover { text-decoration: underline }
   .d-head { margin: 10px 0 14px }
   .d-head h1 { font-size: 26px }
   .d-actions .btn { flex: 1; padding: 12px 14px; font-size: 15px }
-  .plan .btn { width: 100% }
   .card-tools { width: 100% }
   .card-tools .seg { flex: 1 }
   .seg.small button { flex: 1; padding: 9px 6px }
@@ -565,4 +585,47 @@ a.entry-name:hover { text-decoration: underline }
   .sheet .dialog { width: 100%; max-height: 92dvh; overflow: auto; border-radius: 16px 16px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) }
   .sheet .row-btns .btn { flex: 1; padding: 12px }
   input[type=date], input[type=time], input[type=text], input[type=password], input[type=email], input[type=search], select { font-size: 16px }  /* no zoom-in on iOS */
+}
+
+/* =============================================================================
+   Verwaltung (pages/Manage.jsx) and appointments on the detail page
+   ============================================================================= */
+.lead { margin: -6px 0 16px; color: var(--muted) }
+.tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); overflow-x: auto }
+.tabs a { padding: 9px 14px 8px; border-bottom: 3px solid transparent; margin-bottom: -1px; color: var(--muted);
+  font-weight: 700; text-decoration: none; white-space: nowrap }
+.tabs a:hover { color: var(--ink) }
+.tabs a.active { color: var(--accent); border-bottom-color: var(--accent) }
+.dev-tbl td .u > div a { color: inherit; text-decoration: none }
+.dev-tbl td .u > div a:hover b { text-decoration: underline }
+.dev-tbl .role-sel { max-width: 210px }
+.dev-tbl td.stale { color: var(--red); font-weight: 600 }
+
+.cat-list { list-style: none; margin: 0; padding: 0 }
+.cat-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid var(--line) }
+.cat-list li:last-child { border-bottom: 0 }
+.cat-name { display: grid; min-width: 0 }
+.cat-rename { display: flex; gap: 8px; flex: 1; flex-wrap: wrap }
+.cat-rename input { flex: 1; min-width: 160px }
+
+.appts .msg { margin-bottom: 10px }
+.appt-list { list-style: none; margin: 0 0 10px; padding: 0 }
+.appt-list li { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; align-items: center; gap: 6px 14px;
+  padding: 10px 12px; margin-bottom: 8px; border-radius: 8px; background: var(--accent-bg);
+  border-left: 4px solid var(--accent) }
+.appt-when { white-space: nowrap }
+.appt-note { overflow-wrap: anywhere; color: var(--muted) }
+
+@media (max-width: 860px) {
+  /* technician on the phone: the own appointments right below the battery, not after all the facts */
+  .d-grid > [aria-label="Akkustand"] { order: -2 }
+  .d-grid > .appts { order: -1 }
+  .appts .card-head .btn, .appts .card-head .btn-s { width: 100% }
+  .appt-list li { grid-template-columns: 1fr }
+  .appt-list .entry-actions { display: flex; gap: 8px }
+  .appt-list .entry-actions .btn-s { flex: 1 }
+  .dev-tbl .role-sel { max-width: none; width: 100% }
+  .dev-tbl td:nth-child(2), .dev-tbl td:nth-child(3) { grid-column: 1 / -1 }
+  .tabs a { flex: 1; text-align: center }
 }
